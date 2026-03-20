@@ -1,952 +1,994 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Surgical Planner 🗓️</title>
-  
-  <!-- โหลด Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- โหลด React -->
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-  
-  <!-- โหลด Babel -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  
-  <!-- โหลด html2canvas (ระบบกล้องถ่ายรูป) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Calendar, Search, BarChart3, Scissors, ClipboardPaste, 
+  Copy, Image as ImageIcon, FileSpreadsheet, Plus, X, Edit3, 
+  Trash2, Phone, CalendarDays, CheckCircle2, AlertCircle,
+  ChevronLeft, ChevronRight, ArrowLeft, Settings, Tag, Disc,
+  Lock, Unlock
+} from 'lucide-react';
 
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@600&family=Mali:ital,wght@0,400;0,600;1,400&display=swap');
-    
-    body { background-color: #2b2b2b; margin: 0; padding: 0; }
-    
-    /* กันหางตัวหนังสือขาด */
-    .handwriting { font-family: 'Mali', cursive; line-height: 1.6; }
+// --- Helper Functions ---
+const formatThaiDate = (dateString) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear() + 543}`;
+};
 
-    .donut-text {
-      font-family: 'Fredoka', sans-serif;
-      background: linear-gradient(45deg, #7dd3fc, #6ee7b7, #fcd34d, #93c5fd);
-      background-size: 200% auto;
-      -webkit-background-clip: text;
-      color: transparent;
-      filter: drop-shadow(3px 3px 0px #94a3b8) drop-shadow(-1px -1px 0px #ffffff);
-      animation: shine 3s linear infinite;
+const getTodayString = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// --- Palette สีสำหรับการ์ดหัตถการ ---
+const colorPalette = [
+  'bg-blue-100 border-blue-300 text-blue-900',
+  'bg-pink-100 border-pink-300 text-pink-900',
+  'bg-purple-100 border-purple-300 text-purple-900',
+  'bg-green-100 border-green-300 text-green-900',
+  'bg-orange-100 border-orange-300 text-orange-900',
+  'bg-teal-100 border-teal-300 text-teal-900',
+  'bg-rose-100 border-rose-300 text-rose-900',
+  'bg-cyan-100 border-cyan-300 text-cyan-900',
+  'bg-indigo-100 border-indigo-300 text-indigo-900',
+  'bg-lime-100 border-lime-300 text-lime-900'
+];
+
+const defaultProcedures = [
+  { name: 'Phaco ตาซ้าย', color: colorPalette[0] },
+  { name: 'Phaco ตาขวา', color: colorPalette[1] },
+  { name: 'ECCE สองตา', color: colorPalette[2] },
+  { name: 'ลอกต้อเนื้อ ตาซ้าย', color: colorPalette[3] },
+  { name: 'ลอกต้อเนื้อ ตาขวา', color: colorPalette[4] },
+  { name: 'ทำเลซิก', color: colorPalette[5] }
+];
+
+const defaultNotes = ['เบาหวาน', 'ความดัน', 'ยาละลายลิ่มเลือด', 'ขอคิวเช้า', 'VIP'];
+const defaultIOLs = ['SN60WF', 'Clareon', 'PanOptix', 'Vivity', 'Eyhance', 'Alcon'];
+
+const thaiMonthsFull = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+const daysOfWeek = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+
+const getMonthGrid = (year, month) => {
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const grid = [];
+  for (let i = 0; i < firstDay; i++) grid.push(null);
+  for (let i = 1; i <= daysInMonth; i++) {
+    grid.push(`${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
+  }
+  return grid;
+};
+
+// --- Mock Data เดือนมกราคม ---
+const initialMockData = [
+  { id: 'm1', name: 'คุณตา สมหมาย ใจดี', hn: 'HN00001', age: '72', phone: '081-111-1111', procedure: 'Phaco ตาซ้าย', zone: 'Normal', date: '2026-01-15', iol1: 'SN60WF 21.0D', iol2: '21.5D', iol3: '', iolApptDate: '2025-12-20', note: 'เบาหวาน ความดัน' },
+  { id: 'm2', name: 'คุณยาย ศรีนวล รักไทย', hn: 'HN00002', age: '68', phone: '082-222-2222', procedure: 'Phaco ตาขวา', zone: 'Normal', date: '2026-01-15', iol1: 'Clareon 19.0D', iol2: '', iol3: '', iolApptDate: '', note: '' },
+  { id: 'm3', name: 'ลุง ประเสริฐ ยอดเยี่ยม', hn: 'HN00003', age: '65', phone: '083-333-3333', procedure: 'ECCE สองตา', zone: 'Normal', date: '2026-01-15', iol1: 'Alcon 20.0D', iol2: '20.5D', iol3: '21.0D', iolApptDate: '', note: 'ขอคิวเช้า' },
+  { id: 'm4', name: 'ป้า สมใจ พูนสุข', hn: 'HN00004', age: '60', phone: '084-444-4444', procedure: 'ลอกต้อเนื้อ ตาซ้าย', zone: 'Normal', date: '2026-01-15', iol1: '', iol2: '', iol3: '', iolApptDate: '', note: '' },
+  { id: 'm5', name: 'พี่ สมศักดิ์ มั่งมี', hn: 'HN00005', age: '55', phone: '085-555-5555', procedure: 'Phaco ตาซ้าย', zone: 'Normal', date: '2026-01-15', iol1: 'SN60WF 22.0D', iol2: '', iol3: '', iolApptDate: '', note: '' },
+  
+  { id: 'm6', name: 'คุณหญิง ดารา งามตา', hn: 'HN00006', age: '62', phone: '086-666-6666', procedure: 'Phaco ตาขวา', zone: 'SMC', date: '2026-01-15', iol1: 'PanOptix 18.5D', iol2: '19.0D', iol3: '', iolApptDate: '', note: 'VIP' },
+  { id: 'm7', name: 'เถ้าแก่ ชัย เจริญรุ่ง', hn: 'HN00007', age: '70', phone: '087-777-7777', procedure: 'Phaco ตาซ้าย', zone: 'SMC', date: '2026-01-15', iol1: 'Vivity 20.0D', iol2: '', iol3: '', iolApptDate: '', note: 'ยาละลายลิ่มเลือด' },
+  { id: 'm8', name: 'อ. วิทยา สว่างจิต', hn: 'HN00008', age: '58', phone: '088-888-8888', procedure: 'Phaco ตาซ้าย', zone: 'SMC', date: '2026-01-15', iol1: 'Eyhance 21.0D', iol2: '21.5D', iol3: '', iolApptDate: '', note: '' },
+  { id: 'm9', name: 'เจ๊ หงส์ ทองคำ', hn: 'HN00009', age: '64', phone: '089-999-9999', procedure: 'Phaco ตาขวา', zone: 'SMC', date: '2026-01-15', iol1: 'Clareon 23.0D', iol2: '23.5D', iol3: '', iolApptDate: '2026-01-05', note: '' },
+  { id: 'm10', name: 'เสี่ย หมู บินได้', hn: 'HN00010', age: '50', phone: '090-000-0000', procedure: 'ทำเลซิก', zone: 'SMC', date: '2026-01-15', iol1: '', iol2: '', iol3: '', iolApptDate: '', note: 'พรีเมียม' }
+];
+
+export default function App() {
+  // --- State Management ---
+  const [patients, setPatients] = useState(() => {
+    const saved = localStorage.getItem('surgical_planner_data');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.length > 0) return parsed;
+    }
+    return initialMockData;
+  });
+
+  const [procedures, setProcedures] = useState(() => {
+    const savedProcs = localStorage.getItem('surgical_planner_procedures');
+    return savedProcs ? JSON.parse(savedProcs) : defaultProcedures;
+  });
+
+  const [presetNotes, setPresetNotes] = useState(() => {
+    const savedNotes = localStorage.getItem('surgical_planner_notes');
+    return savedNotes ? JSON.parse(savedNotes) : defaultNotes;
+  });
+
+  const [presetIOLs, setPresetIOLs] = useState(() => {
+    const savedIOLs = localStorage.getItem('surgical_planner_iols');
+    return savedIOLs ? JSON.parse(savedIOLs) : defaultIOLs;
+  });
+
+  // ระบบวันหยุด (Locked Days)
+  const [lockedDays, setLockedDays] = useState(() => {
+    const savedLocked = localStorage.getItem('surgical_planner_locked');
+    return savedLocked ? JSON.parse(savedLocked) : [];
+  });
+  
+  const [currentDate, setCurrentDate] = useState(getTodayString());
+  // เปลี่ยนค่าเริ่มต้นให้เปิดมาเจอหน้า 'year' ปฏิทินรายปีก่อนเลย
+  const [view, setView] = useState('year'); 
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isManageProcsOpen, setIsManageProcsOpen] = useState(false);
+  const [isManageNotesOpen, setIsManageNotesOpen] = useState(false);
+  const [isManageIOLsOpen, setIsManageIOLsOpen] = useState(false);
+  
+  // State สำหรับ โหมดตั้งวันหยุด ในหน้ารายปี
+  const [isEditHolidayMode, setIsEditHolidayMode] = useState(false);
+  
+  const [newProcName, setNewProcName] = useState('');
+  const [newNoteName, setNewNoteName] = useState('');
+  const [newIOLName, setNewIOLName] = useState('');
+
+  const [editingId, setEditingId] = useState(null);
+  const [confirmPatientDelete, setConfirmPatientDelete] = useState(false); 
+  
+  const [cutPatientId, setCutPatientId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // Form State
+  const [formData, setFormData] = useState({
+    name: '', hn: '', age: '', phone: '',
+    procedure: procedures[0]?.name || 'Phaco ตาซ้าย', 
+    zone: 'Normal', date: currentDate,
+    iol1: '', iol2: '', iol3: '', iolApptDate: '', note: ''
+  });
+
+  // --- Effects ---
+  useEffect(() => localStorage.setItem('surgical_planner_data', JSON.stringify(patients)), [patients]);
+  useEffect(() => localStorage.setItem('surgical_planner_procedures', JSON.stringify(procedures)), [procedures]);
+  useEffect(() => localStorage.setItem('surgical_planner_notes', JSON.stringify(presetNotes)), [presetNotes]);
+  useEffect(() => localStorage.setItem('surgical_planner_iols', JSON.stringify(presetIOLs)), [presetIOLs]);
+  useEffect(() => localStorage.setItem('surgical_planner_locked', JSON.stringify(lockedDays)), [lockedDays]);
+
+  useEffect(() => {
+    if (!document.getElementById('mali-font')) {
+      const link = document.createElement('link');
+      link.id = 'mali-font';
+      link.href = 'https://fonts.googleapis.com/css2?family=Mali:wght@400;500;600;700&display=swap';
+      link.rel = 'stylesheet';
+      document.head.appendChild(link);
+    }
+    if (!document.getElementById('html2canvas-script')) {
+      const script = document.createElement('script');
+      script.id = 'html2canvas-script';
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      document.head.appendChild(script);
     }
     
-    @keyframes shine { to { background-position: 200% center; } }
-
-    .dotted-line { border-bottom: 1.5px dotted #64748b; display: inline-block; min-width: 100px; line-height: 1.2; }
-
-    .edit-input {
-      background: transparent; border: none; border-bottom: 2px dashed #94a3b8;
-      font-family: 'Mali', cursive; color: #1e293b; width: 100%; padding: 2px 4px; outline: none; transition: border-color 0.2s;
+    if (!document.getElementById('paper-style')) {
+      const style = document.createElement('style');
+      style.id = 'paper-style';
+      style.innerHTML = `
+        body { font-family: 'Mali', cursive; }
+        .paper-bg {
+          background-color: #fdfbf7;
+          background-image: linear-gradient(#e5e7eb 1px, transparent 1px), linear-gradient(90deg, #e5e7eb 1px, transparent 1px);
+          background-size: 24px 24px;
+        }
+        .card-shadow { box-shadow: 3px 4px 0px rgba(0,0,0,0.1); }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      `;
+      document.head.appendChild(style);
     }
-    .edit-input:focus { border-bottom-color: #475569; }
+  }, []);
+
+  // --- Data Derived ---
+  const currentPatients = useMemo(() => patients.filter(p => p.date === currentDate), [patients, currentDate]);
+  const normalQueue = currentPatients.filter(p => p.zone === 'Normal');
+  const smcQueue = currentPatients.filter(p => p.zone === 'SMC');
+  const isCurrentDateLocked = lockedDays.includes(currentDate);
+
+  const dateStats = useMemo(() => {
+    const stats = {};
+    patients.forEach(p => {
+      if (!stats[p.date]) stats[p.date] = { normal: 0, smc: 0 };
+      if (p.zone === 'Normal') stats[p.date].normal++;
+      if (p.zone === 'SMC') stats[p.date].smc++;
+    });
+    return stats;
+  }, [patients]);
+
+  const getProcedureColor = (procName) => {
+    const found = procedures.find(p => p.name === procName);
+    return found ? found.color : 'bg-gray-100 border-gray-300 text-gray-800';
+  };
+
+  // --- Handlers ---
+  const openForm = (patient = null) => {
+    setConfirmPatientDelete(false); 
+    if (patient) {
+      setFormData(patient);
+      setEditingId(patient.id);
+    } else {
+      setFormData({
+        name: '', hn: '', age: '', phone: '',
+        procedure: procedures.length > 0 ? procedures[0].name : '', 
+        zone: 'Normal', date: currentDate,
+        iol1: '', iol2: '', iol3: '', iolApptDate: '', note: ''
+      });
+      setEditingId(null);
+    }
+    setIsFormOpen(true);
+  };
+
+  const savePatient = (e) => {
+    e.preventDefault();
+    if (editingId) {
+      setPatients(patients.map(p => p.id === editingId ? { ...formData, id: editingId } : p));
+    } else {
+      setPatients([...patients, { ...formData, id: Date.now().toString() }]);
+    }
+    setIsFormOpen(false);
+  };
+
+  const deletePatient = (id) => {
+    setPatients(patients.filter(p => p.id !== id));
+    if (cutPatientId === id) setCutPatientId(null);
+    setIsFormOpen(false);
+  };
+
+  const handleCut = (id) => setCutPatientId(id);
+
+  const handlePaste = () => {
+    if (!cutPatientId) return;
+    setPatients(patients.map(p => p.id === cutPatientId ? { ...p, date: currentDate } : p));
+    setCutPatientId(null);
+  };
+
+  const goToDay = (dateStr) => {
+    setCurrentDate(dateStr);
+    setView('day');
+  };
+
+  // อัปเกรดฟังก์ชัน Toggle ให้รับค่าวันที่ที่จิ้มเข้ามาได้เลย
+  const toggleLockDay = (dateToToggle) => {
+    if (lockedDays.includes(dateToToggle)) {
+      setLockedDays(lockedDays.filter(d => d !== dateToToggle));
+    } else {
+      setLockedDays([...lockedDays, dateToToggle]);
+    }
+  };
+
+  // --- จัดการหัตถการ ---
+  const addNewProcedure = () => {
+    if (!newProcName.trim()) return;
+    const cleanName = newProcName.trim();
+    const exists = procedures.find(p => p.name.toLowerCase() === cleanName.toLowerCase());
+    if (!exists) {
+      const newColor = colorPalette[procedures.length % colorPalette.length];
+      setProcedures([...procedures, { name: cleanName, color: newColor }]);
+      setNewProcName('');
+    }
+  };
+  const deleteProcedure = (name) => {
+    setProcedures(procedures.filter(p => p.name !== name));
+    if (formData.procedure === name) setFormData({ ...formData, procedure: procedures[0]?.name || '' });
+  };
+
+  // --- จัดการ หมายเหตุ ---
+  const addNewNote = () => {
+    if (!newNoteName.trim()) return;
+    const cleanName = newNoteName.trim();
+    if (!presetNotes.includes(cleanName)) {
+      setPresetNotes([...presetNotes, cleanName]);
+      setNewNoteName('');
+    }
+  };
+  const deletePresetNote = (name) => setPresetNotes(presetNotes.filter(n => n !== name));
+  const addNoteToForm = (noteText) => {
+    const currentNote = formData.note.trim();
+    if (currentNote) setFormData({ ...formData, note: `${currentNote} ${noteText}` });
+    else setFormData({ ...formData, note: noteText });
+  };
+
+  // --- จัดการ IOLs ---
+  const addNewIOL = () => {
+    if (!newIOLName.trim()) return;
+    const cleanName = newIOLName.trim();
+    if (!presetIOLs.includes(cleanName)) {
+      setPresetIOLs([...presetIOLs, cleanName]);
+      setNewIOLName('');
+    }
+  };
+  const deletePresetIOL = (name) => setPresetIOLs(presetIOLs.filter(n => n !== name));
+  
+  const addIOLToForm = (iolText) => {
+    if (!formData.iol1) setFormData({ ...formData, iol1: iolText });
+    else if (!formData.iol2) setFormData({ ...formData, iol2: iolText });
+    else if (!formData.iol3) setFormData({ ...formData, iol3: iolText });
+    else setFormData({ ...formData, iol1: formData.iol1 + ' ' + iolText });
+  };
+
+  // --- Export Features ---
+  const copyToLine = () => {
+    let text = `📅 วันที่ผ่าตัด: ${formatThaiDate(currentDate)}\n`;
+    if (isCurrentDateLocked) text += `🛑 สถานะ: วันหยุด / ไม่รับคิว\n`;
+    text += `\n🟢 โซนปกติ (${normalQueue.length} เคส)\n`;
+    normalQueue.forEach((p, i) => {
+      text += `${i+1}. ${p.name} (HN: ${p.hn}) - ${p.procedure}\n`;
+      if(p.iol1) text += `   เลนส์: ${p.iol1} ${p.iol2} ${p.iol3}\n`;
+    });
     
-    input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.6; transition: 0.2s; }
-    input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+    text += `\n🟡 โซน SMC (${smcQueue.length} เคส)\n`;
+    smcQueue.forEach((p, i) => {
+      text += `${i+1}. ${p.name} (HN: ${p.hn}) - ${p.procedure}\n`;
+      if(p.iol1) text += `   เลนส์: ${p.iol1} ${p.iol2} ${p.iol3}\n`;
+    });
 
-    .hide-scroll::-webkit-scrollbar { display: none; }
-    .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+    navigator.clipboard.writeText(text);
+    alert('ก๊อปปี้ข้อมูลสำหรับส่ง LINE เรียบร้อยแล้ว! 📋');
+  };
 
-    @keyframes popIn { 0% { transform: scale(0.95); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-    .pop-in { animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-    
-    @keyframes slideInRight { 0% { transform: translateX(20px); opacity: 0; } 100% { transform: translateX(0); opacity: 1; } }
-    .slide-in { animation: slideInRight 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
-    
-    .grid-bg { background-image: linear-gradient(#e2e8f0 1px, transparent 1px), linear-gradient(90deg, #e2e8f0 1px, transparent 1px); background-size: 30px 30px; }
-    .cut-pattern { background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.5) 10px, rgba(255,255,255,0.5) 20px); }
-    .hide-on-capture { transition: opacity 0.2s; }
+  const exportToImage = async () => {
+    if (!window.html2canvas) return alert('ระบบกำลังโหลดเครื่องมือถ่ายภาพ กรุณารอสักครู่ฮะ');
+    const captureArea = document.getElementById('day-capture-area');
+    try {
+      const canvas = await window.html2canvas(captureArea, { scale: 2, backgroundColor: '#fdfbf7' });
+      const image = canvas.toDataURL("image/png");
+      const link = document.createElement('a');
+      link.href = image;
+      link.download = `ตารางผ่าตัด_${currentDate}.png`;
+      link.click();
+    } catch (err) {
+      alert('เกิดข้อผิดพลาดในการสร้างรูปภาพ');
+    }
+  };
 
-    .stat-bar { transition: width 1s cubic-bezier(0.4, 0, 0.2, 1); }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
+  const exportToCSV = () => {
+    const header = "วันที่,โซน,ชื่อ-สกุล,อายุ,HN,เบอร์โทร,หัตถการ,เลนส์1,เลนส์2,เลนส์3,วันนัดIOL,หมายเหตุ\n";
+    const currentMonthStr = currentDate.substring(0, 7);
+    const monthData = patients.filter(p => p.date.startsWith(currentMonthStr));
+    const rows = monthData.map(p => `${p.date},${p.zone},${p.name},${p.age},${p.hn},${p.phone},${p.procedure},${p.iol1},${p.iol2},${p.iol3},${p.iolApptDate},${p.note}`).join("\n");
+    const bom = "\uFEFF"; 
+    const blob = new Blob([bom + header + rows], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Surgical_Plan_${currentMonthStr}.csv`;
+    link.click();
+  };
 
-  <!-- โค้ด React ทั้งหมดจะอยู่ที่นี่ -->
-  <script type="text/babel">
-    const { useState, useEffect, useMemo } = React;
-
-    const formatDisplayDate = (dateStr) => {
-      if (!dateStr || !dateStr.includes('-')) return dateStr;
-      const [year, month, day] = dateStr.split('-');
-      const shortMonths = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
-      const thaiYearStr = (parseInt(year) + 543).toString().slice(-2);
-      return `${parseInt(day)} ${shortMonths[parseInt(month) - 1]} ${thaiYearStr}`;
-    };
-
-    const procedureColors = {
-      'PE+IOL RE': 'bg-yellow-200', 'PE+IOL LE': 'bg-sky-300',
-      'ECCE+IOL RE': 'bg-green-300', 'ECCE+IOL LE': 'bg-pink-300',
-      'PTR+CAG RE': 'bg-orange-300', 'PTR+CAG LE': 'bg-purple-300',
-      'PTR+MMC RE': 'bg-rose-300', 'PTR+MMC LE': 'bg-indigo-300',
-      'Tx+MMC RE': 'bg-lime-300', 'Tx+MMC LE': 'bg-cyan-300',
-      'PE+IOL+Tx+MMC RE': 'bg-amber-400', 'PE+IOL+Tx+MMC LE': 'bg-teal-300',
-    };
-    const getProcedureColor = (proc) => procedureColors[proc] || 'bg-slate-200';
-
-    const monthThemes = [
-      { bg: 'bg-blue-50 pat-dots', header: 'bg-blue-200 text-blue-800 border-blue-300', icon: '⛄️' },     
-      { bg: 'bg-sky-50 pat-grid', header: 'bg-sky-200 text-sky-800 border-sky-300', icon: '🪁' },         
-      { bg: 'bg-cyan-50 pat-lines', header: 'bg-cyan-200 text-cyan-800 border-cyan-300', icon: '🛹' },     
-      { bg: 'bg-teal-50 pat-stripes', header: 'bg-teal-200 text-teal-800 border-teal-300', icon: '💦' },     
-      { bg: 'bg-emerald-50 pat-cross', header: 'bg-emerald-200 text-emerald-800 border-emerald-300', icon: '🏕️' },
-      { bg: 'bg-green-50 pat-zigzag', header: 'bg-green-200 text-green-800 border-green-300', icon: '☔️' }, 
-      { bg: 'bg-lime-50 pat-dots', header: 'bg-lime-200 text-lime-800 border-lime-300', icon: '🐸' },     
-      { bg: 'bg-yellow-50 pat-grid', header: 'bg-yellow-200 text-yellow-800 border-yellow-300', icon: '🌻' }, 
-      { bg: 'bg-amber-50 pat-lines', header: 'bg-amber-200 text-amber-800 border-amber-300', icon: '🍂' }, 
-      { bg: 'bg-orange-50 pat-stripes', header: 'bg-orange-200 text-orange-800 border-orange-300', icon: '🎃' }, 
-      { bg: 'bg-stone-50 pat-cross', header: 'bg-stone-200 text-stone-800 border-stone-300', icon: '⛺' }, 
-      { bg: 'bg-slate-50 pat-zigzag', header: 'bg-slate-200 text-slate-800 border-slate-300', icon: '🎄' }  
-    ];
-
-    const iolPowerOptions = ['-'];
-    for (let i = 10; i <= 30; i += 0.5) { iolPowerOptions.push(i.toFixed(1)); }
-    const iolTypeOptions = ['-', 'EH', '3P', '1P', 'Toric', 'Multifocal', 'NO IOL', 'อื่นๆ (พิมพ์เอง)'];
-
-    const mockAprilFirst = [
-      { id: 1, zone: 'normal', procedure: 'PE+IOL RE', name: 'นายสงัด กองเจริญ', age: '74', hn: '112233', iolDate: '2026-02-05', iolType: '-', iolPower: '-', tel: '0855828061, 0991234567', note: 'tobrey / gatiflo', location: 'Clinic', color: getProcedureColor('PE+IOL RE') },
-      { id: 2, zone: 'normal', procedure: 'ECCE+IOL LE', name: 'นางเปรม ม่วงทอง', age: '74', hn: '30059', iolDate: '2026-02-12', iolType: '3P', iolPower: '18.5', iolType2: 'EH', iolPower2: '19.0', tel: '0836288604', note: '-', location: 'Hospital', color: getProcedureColor('ECCE+IOL LE') },
-      { id: 8, zone: 'normal', procedure: 'Tx+MMC RE', name: 'พระพยอม เพ็ชรดี', age: '61', hn: '270444', iolDate: '', iolType: '-', iolPower: '-', tel: '0956864849', note: '-', location: 'Hospital', color: getProcedureColor('Tx+MMC RE') },
-      { id: 9, zone: 'smc', procedure: 'ECCE+IOL LE', name: 'นายธิป เปี้ยวบาง', age: '', hn: '', iolDate: '2026-02-26', iolType: '-', iolPower: '-', tel: '0628428148', note: 'o.s. omit, glaucotec', location: 'Clinic', color: getProcedureColor('ECCE+IOL LE') },
-      { id: 10, zone: 'smc', procedure: 'PE+IOL RE', name: 'นายธวัชชัย วรเดช', age: '71', hn: '151540', iolDate: '', iolType: 'EH', iolPower: '23.5', iolType2: 'EH', iolPower2: '24.0', iolType3: '3P', iolPower3: '23.5', tel: '0899623830', note: '-', location: 'Hospital', color: getProcedureColor('PE+IOL RE') },
-    ];
-
-    const procedureOptions = Object.keys(procedureColors).concat(['อื่นๆ (พิมพ์เอง)']);
-    const months = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
-    const thaiDays = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
-    const fullThaiDays = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
-
-    const getFormattedDateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-
-    const formatIOLDisplay = (type, power) => {
-      if (type === 'NO IOL') return 'NO IOL';
-      const displayType = type && type !== '-' ? type : '';
-      const displayPower = power && power !== '-' ? power : '';
-      if (!displayType && !displayPower) return '-';
-      return `${displayType} ${displayPower}`.trim();
-    };
-
-    const DecorStickers = () => (
-      <div className="absolute inset-0 pointer-events-none overflow-hidden z-0 opacity-50">
-        <div className="absolute top-[10%] left-[5%] text-5xl rotate-[-15deg] drop-shadow-sm opacity-60">☕️</div>
-        <div className="absolute top-[60%] left-[3%] text-4xl rotate-[10deg] drop-shadow-sm opacity-60">💊</div>
-        <div className="absolute top-[20%] right-[4%] text-6xl rotate-[20deg] drop-shadow-sm opacity-60">📋</div>
-        <div className="absolute bottom-[10%] right-[6%] text-5xl rotate-[-25deg] drop-shadow-sm opacity-60">🩺</div>
-        <div className="absolute bottom-[30%] right-[40%] text-3xl opacity-40">✨</div>
-        <div className="absolute top-[40%] left-[30%] text-4xl rotate-[15deg] drop-shadow-sm opacity-40">🩹</div>
-      </div>
-    );
-
-    // ป้องกันหางตัวหนังสือขาดเวลาถ่ายรูป
-    const InfoRow = ({ label, value, valueClass = "font-bold text-slate-900" }) => (
-      <div className="flex items-end gap-2 mt-1">
-        <span className="text-slate-600 shrink-0 mb-[3px]">{label}</span>
-        <div className="flex-1 border-b-[1.5px] border-dotted border-slate-500/50">
-          <div className={`w-full pb-[6px] leading-normal whitespace-nowrap overflow-hidden text-ellipsis ${valueClass}`}>
-            {value || '\u00A0'}
-          </div>
+  // --- Components ---
+  const PatientCard = ({ patient }) => (
+    <div className={`p-4 mb-4 rounded-xl border-2 card-shadow relative ${getProcedureColor(patient.procedure)} transition-all hover:scale-[1.01]`}>
+      <div className="flex justify-between items-start mb-2">
+        <div>
+          <h3 className="text-lg font-bold flex items-center gap-2">
+            {patient.name} <span className="text-sm font-normal opacity-80">(อายุ {patient.age})</span>
+          </h3>
+          <p className="text-sm font-semibold opacity-90">HN: {patient.hn}</p>
+        </div>
+        <div className="flex gap-1">
+          <button onClick={() => openForm(patient)} className="p-1.5 bg-white/50 hover:bg-white rounded-lg"><Edit3 size={16} /></button>
+          <button onClick={() => handleCut(patient.id)} className={`p-1.5 rounded-lg ${cutPatientId === patient.id ? 'bg-red-400 text-white' : 'bg-white/50 hover:bg-white'}`}>
+            <Scissors size={16} />
+          </button>
         </div>
       </div>
-    );
-
-    // ================= COMPONENT: CARD =================
-    const PatientCard = ({ data, boardDate, onEditClick, onDragStart, onDropOnCard, isDragged, isSelected, onSelect, isCut, isCapturing }) => {
-      const [isCopied, setIsCopied] = useState(false);
-      const [isDragOver, setIsDragOver] = useState(false);
-
-      const iol1 = formatIOLDisplay(data.iolType, data.iolPower);
-      const iol2 = formatIOLDisplay(data.iolType2, data.iolPower2);
-      const iol3 = formatIOLDisplay(data.iolType3, data.iolPower3);
-
-      const handleCopyToLine = (e) => {
-        e.stopPropagation();
-        let iolText = iol1;
-        if (iol2 !== '-') iolText += `, ${iol2}`;
-        if (iol3 !== '-') iolText += `, ${iol3}`;
-        const lineFormatText = `📅 วันที่ผ่าตัด: ${boardDate}\nหัตถการ: ${data.procedure || '-'}\nชื่อ: ${data.name || '-'} อายุ: ${data.age || '-'}\nHN: ${data.hn || '-'}\nนัด IOL: ${formatDisplayDate(data.iolDate) || '-'}\nIOL: ${iolText}\nโทร: ${data.tel || '-'}\nNote: ${data.note || '-'}`;
-        const textArea = document.createElement("textarea");
-        textArea.value = lineFormatText;
-        document.body.appendChild(textArea);
-        textArea.select();
-        try { document.execCommand('copy'); setIsCopied(true); setTimeout(() => setIsCopied(false), 2000); } 
-        catch (err) { console.error('ก๊อปปี้ไม่สำเร็จ!', err); }
-        document.body.removeChild(textArea);
-      };
-
-      return (
-        <div 
-          draggable={!isCut && !isCapturing}
-          onDragStart={(e) => onDragStart(e, data.id)}
-          onDragEnter={(e) => e.preventDefault()} 
-          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; setIsDragOver(true); }}
-          onDragLeave={(e) => { e.stopPropagation(); setIsDragOver(false); }}
-          onDrop={(e) => { setIsDragOver(false); onDropOnCard(e, data); }}
-          className={`${data.color} p-4 pb-3 rounded-2xl shadow-sm border border-slate-300/60 handwriting text-[15px] text-slate-800 flex flex-col gap-0.5 w-full transition-all relative z-10
-          ${isDragged ? 'opacity-40 scale-95 border-dashed border-2' : ''}
-          ${!isCut && !isCapturing ? 'cursor-grab active:cursor-grabbing hover:-translate-y-1 hover:shadow-md' : ''}
-          ${isCut ? 'opacity-60 cut-pattern border-dashed border-2 border-orange-400 scale-95 grayscale-[30%] pointer-events-none' : ''}
-          ${isDragOver && !isCut ? 'border-dashed border-2 border-sky-400 scale-105 shadow-lg opacity-80' : ''}
-          ${isSelected && !isCut && !isCapturing ? 'ring-2 ring-sky-500 ring-offset-2 scale-[1.02]' : ''}`}
-        >
-          {isCut && <div className="absolute inset-0 flex items-center justify-center z-50"><span className="bg-orange-500 text-white px-3 py-1 rounded-full font-bold text-lg shadow-md rotate-[-10deg]">✂️ ตัดแล้ว...</span></div>}
-          
-          <div className="flex justify-between items-start border-b-2 border-white/60 pb-2 mb-2">
-            <div className="font-bold text-[15px] whitespace-nowrap overflow-visible flex-1 flex items-center gap-1.5 pb-1">
-              {!isCut && !isCapturing && (
-                <input type="checkbox" checked={isSelected} onChange={(e) => { e.stopPropagation(); onSelect(data.id); }} className="w-4 h-4 accent-sky-500 cursor-pointer no-drag shrink-0 hide-on-capture" title="เลือกคิว" />
-              )}
-              <span className="shrink-0 drop-shadow-sm">👁️</span> 
-              <span className="bg-white/60 px-2 py-0.5 rounded-lg shadow-sm border border-white/80 leading-normal">{data.procedure || '-'}</span>
-            </div>
-            {!isCapturing && (
-              <div className="flex gap-1 z-10 shrink-0 ml-1 hide-on-capture pt-1">
-                <button className="text-xs bg-white/80 hover:bg-white text-slate-700 px-2 py-1 rounded-md transition-colors shadow-sm border border-slate-300 no-drag" onClick={handleCopyToLine} title="ก๊อปปี้ลง LINE">{isCopied ? '✅' : '📋'}</button>
-                <button className="text-xs bg-white/80 hover:bg-white text-slate-700 px-2 py-1 rounded-md transition-colors shadow-sm border border-slate-300 no-drag" onClick={(e) => { e.stopPropagation(); onEditClick(data); }} title="แก้ไขข้อมูล">✏️</button>
-              </div>
-            )}
-          </div>
-          
-          <InfoRow label="ชื่อ" value={data.name} />
-          <InfoRow label="อายุ" value={data.age} valueClass="font-semibold text-center" />
-          <InfoRow label="HN" value={data.hn} valueClass="font-mono font-bold text-sm text-center tracking-wider" />
-          <InfoRow label="นัด IOL" value={formatDisplayDate(data.iolDate)} valueClass="font-semibold text-center" />
-          
-          <div className="bg-white/50 rounded-xl p-2 flex flex-col gap-0 border border-white/80 shadow-sm mt-1 mb-1 pointer-events-none">
-            <InfoRow label="IOL" value={iol1} valueClass="font-bold text-sky-800 text-center text-[16px]" />
-            {iol2 !== '-' && <InfoRow label="IOL 2" value={iol2} valueClass="font-bold text-indigo-700 text-center" />}
-            {iol3 !== '-' && <InfoRow label="IOL 3" value={iol3} valueClass="font-bold text-purple-700 text-center" />}
-          </div>
-
-          <InfoRow label="Tel" value={data.tel} valueClass="font-mono font-semibold text-xs text-center" />
-          <InfoRow label="Note" value={data.note} valueClass="font-semibold text-slate-700 text-[13px]" />
-          
-          <div className="flex gap-4 items-center justify-center mt-3 pt-2.5 border-t-2 border-white/60 text-[12px] font-bold text-slate-700 pointer-events-none pb-1">
-            <div className="flex items-center gap-1.5"><div className={`w-3.5 h-3.5 rounded-full border-[2px] border-slate-600 flex items-center justify-center ${data.location === 'Hospital' ? 'bg-slate-700' : 'bg-white'}`}>{data.location === 'Hospital' && <div className="w-1.5 h-1.5 rounded-full bg-white"></div>}</div><span>Hospital</span></div>
-            <div className="flex items-center gap-1.5"><div className={`w-3.5 h-3.5 rounded-full border-[2px] border-slate-600 flex items-center justify-center ${data.location === 'Clinic' ? 'bg-slate-700' : 'bg-white'}`}>{data.location === 'Clinic' && <div className="w-1.5 h-1.5 rounded-full bg-white"></div>}</div><span>Clinic</span></div>
-          </div>
+      
+      <div className="bg-white/60 p-2 rounded-lg mb-2 text-sm space-y-1">
+        <div className="font-semibold flex items-center gap-1">
+          <CheckCircle2 size={14} className="text-gray-600"/> {patient.procedure}
         </div>
-      );
-    };
-
-    // ================= COMPONENT: EDIT MODAL =================
-    const EditModal = ({ card, activeDateKey, onSave, onClose }) => {
-      const [formData, setFormData] = useState({ ...card, targetDate: activeDateKey });
-      const [isCustomProcedure, setIsCustomProcedure] = useState(!procedureOptions.includes(card.procedure) && card.procedure !== '' && card.procedure !== 'อื่นๆ (พิมพ์เอง)');
-      const [isCustomIolType, setIsCustomIolType] = useState(!iolTypeOptions.includes(card.iolType) && card.iolType !== '' && card.iolType !== 'อื่นๆ (พิมพ์เอง)');
-      const [showBackupIol, setShowBackupIol] = useState((card.iolType2 && card.iolType2 !== '-') || (card.iolPower2 && card.iolPower2 !== '-') || (card.iolType3 && card.iolType3 !== '-') || (card.iolPower3 && card.iolPower3 !== '-'));
-
-      useEffect(() => {
-        if (!isCustomProcedure) setFormData(prev => ({ ...prev, color: getProcedureColor(prev.procedure) }));
-        else setFormData(prev => ({ ...prev, color: 'bg-slate-200' }));
-      }, [formData.procedure, isCustomProcedure]);
-
-      const handleChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
-      const handleProcedureSelect = (e) => { if (e.target.value === 'อื่นๆ (พิมพ์เอง)') { setIsCustomProcedure(true); setFormData(prev => ({ ...prev, procedure: '' })); } else { setIsCustomProcedure(false); setFormData(prev => ({ ...prev, procedure: e.target.value })); } };
-      const handleIolTypeSelect = (e, fieldName, setCustomState) => { if (e.target.value === 'อื่นๆ (พิมพ์เอง)') { setCustomState(true); setFormData(prev => ({ ...prev, [fieldName]: '' })); } else { setCustomState(false); setFormData(prev => ({ ...prev, [fieldName]: e.target.value })); } };
-      const handleSubmit = (e) => { e.preventDefault(); onSave(formData); };
-
-      return (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[500] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden handwriting border-4 border-slate-100 pop-in flex flex-col max-h-[90vh]">
-            <div className={`${formData.color} px-6 py-4 flex justify-between items-center shrink-0 transition-colors duration-300 border-b border-white/50`}>
-              <h2 className="text-xl font-bold text-slate-800">📝 ข้อมูลผ่าตัด</h2>
-              <button onClick={onClose} className="text-slate-500 hover:text-slate-900 hover:bg-white/40 p-1 rounded-full w-8 h-8 flex items-center justify-center font-bold transition-colors">✖</button>
-            </div>
-            <div className="p-6 overflow-y-auto hide-scroll flex-1 bg-slate-50/50 pat-grid">
-              <form id="patient-form" onSubmit={handleSubmit} className="space-y-4">
-                <div className="bg-orange-50 p-3 rounded-2xl border border-orange-200 shadow-sm flex items-center gap-3">
-                  <span className="text-2xl">📅</span>
-                  <div className="flex-1">
-                    <label className="text-xs text-orange-800 font-bold block mb-1">วันที่ผ่าตัด (เปลี่ยนเพื่อย้ายวัน)</label>
-                    <input type="date" name="targetDate" value={formData.targetDate} onChange={handleChange} className="edit-input font-bold bg-slate-50 rounded px-2 text-slate-700 border-slate-300" />
-                  </div>
-                </div>
-                <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
-                  <label className="text-sm text-slate-600 font-bold block mb-2">📍 โซนจัดวางคิว</label>
-                  <div className="flex gap-2 flex-wrap">
-                    <label className={`flex-1 text-center py-2 px-2 rounded-xl cursor-pointer border-2 transition-all ${formData.zone === 'normal' ? 'bg-sky-500 text-white font-bold border-sky-600 shadow-md' : 'bg-slate-50 border-slate-200 hover:bg-sky-50 text-slate-600'}`}><input type="radio" name="zone" value="normal" checked={formData.zone === 'normal'} onChange={handleChange} className="hidden" />🧢 คิวปกติ</label>
-                    <label className={`flex-1 text-center py-2 px-2 rounded-xl cursor-pointer border-2 transition-all ${formData.zone === 'smc' ? 'bg-indigo-500 text-white font-bold border-indigo-600 shadow-md' : 'bg-slate-50 border-slate-200 hover:bg-indigo-50 text-slate-600'}`}><input type="radio" name="zone" value="smc" checked={formData.zone === 'smc'} onChange={handleChange} className="hidden" />🍩 SMC</label>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                  <div className="col-span-2">
-                    <label className="text-sm text-slate-500 font-semibold block mb-1">หัตถการ</label>
-                    {!isCustomProcedure ? (
-                      <select name="procedure" value={formData.procedure || ''} onChange={handleProcedureSelect} className="edit-input font-bold text-lg bg-slate-50 rounded-lg cursor-pointer px-2 border-slate-300">
-                        <option value="" disabled>เลือกหัตถการ...</option>{procedureOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                    ) : (
-                      <div className="flex gap-2 items-end border-b-2 border-dashed border-slate-400 focus-within:border-slate-600 transition-colors"><input type="text" name="procedure" value={formData.procedure} onChange={handleChange} placeholder="พิมพ์ชื่อหัตถการ..." className="bg-transparent border-none font-bold text-lg flex-1 outline-none py-1 px-2" /><button type="button" onClick={() => { setIsCustomProcedure(false); setFormData(prev => ({ ...prev, procedure: '' })); }} className="text-xs bg-slate-200 text-slate-600 px-2 py-1 rounded-t-md hover:bg-slate-300 transition-colors mb-0.5">กลับไปเลือก</button></div>
-                    )}
-                  </div>
-                  <div className="col-span-2"><label className="text-sm text-slate-500 font-semibold block mb-1">ชื่อ-สกุล</label><input type="text" name="name" value={formData.name || ''} onChange={handleChange} className="edit-input text-lg font-bold" /></div>
-                  <div><label className="text-sm text-slate-500 font-semibold block mb-1">อายุ</label><input type="tel" inputMode="numeric" name="age" value={formData.age || ''} onChange={handleChange} className="edit-input" /></div>
-                  <div><label className="text-sm text-slate-500 font-semibold block mb-1">HN</label><input type="tel" inputMode="numeric" name="hn" value={formData.hn || ''} onChange={handleChange} className="edit-input font-mono" /></div>
-                  <div className="col-span-2"><label className="text-sm text-slate-500 font-semibold block mb-1">นัด IOL</label><input type="date" name="iolDate" value={formData.iolDate || ''} onChange={handleChange} className="edit-input text-sm bg-slate-50 rounded" /></div>
-                  
-                  <div className="col-span-2 flex flex-col gap-2 bg-sky-50/50 p-3 rounded-xl border border-sky-100">
-                    <div className="text-sm font-bold text-sky-800 border-b border-sky-200 pb-1 flex justify-between items-center">
-                      เลนส์แก้วตาเทียม (IOL) {!showBackupIol && <button type="button" onClick={() => setShowBackupIol(true)} className="text-[10px] bg-sky-200 text-sky-700 px-2 py-0.5 rounded hover:bg-sky-300">+ เพิ่มเลนส์</button>}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div><label className="text-[11px] text-slate-500 font-semibold block mb-1">ชนิดเลนส์ 1</label>{!isCustomIolType ? (<select name="iolType" value={formData.iolType || '-'} onChange={(e) => handleIolTypeSelect(e, 'iolType', setIsCustomIolType)} className="edit-input font-bold text-sm bg-white rounded cursor-pointer border-slate-300">{iolTypeOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select>) : (<div className="flex gap-1 items-end border-b border-dashed border-slate-400"><input type="text" name="iolType" value={formData.iolType} onChange={handleChange} placeholder="พิมพ์.." className="bg-transparent border-none font-bold text-sm flex-1 outline-none py-0.5 px-1" /><button type="button" onClick={() => { setIsCustomIolType(false); setFormData(prev => ({ ...prev, iolType: '-' })); }} className="text-[10px]">❌</button></div>)}</div>
-                      <div><label className="text-[11px] text-slate-500 font-semibold block mb-1">เบอร์เลนส์ 1</label><select name="iolPower" value={formData.iolPower || '-'} onChange={handleChange} className="edit-input font-bold text-sm bg-white rounded cursor-pointer border-slate-300">{iolPowerOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div>
-                    </div>
-                    {showBackupIol && (
-                      <div className="mt-2 space-y-2 border-t border-dashed border-sky-200 pt-2">
-                        <div className="grid grid-cols-2 gap-2"><div><label className="text-[10px] text-slate-500 font-semibold block mb-1">ชนิด (2)</label><select name="iolType2" value={formData.iolType2 || '-'} onChange={handleChange} className="edit-input text-sm font-bold bg-white rounded cursor-pointer border-slate-300">{iolTypeOptions.filter(o => o !== 'อื่นๆ (พิมพ์เอง)').map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div><div><label className="text-[10px] text-slate-500 font-semibold block mb-1">เบอร์ (2)</label><select name="iolPower2" value={formData.iolPower2 || '-'} onChange={handleChange} className="edit-input text-sm font-bold bg-white rounded cursor-pointer border-slate-300">{iolPowerOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div></div>
-                        <div className="grid grid-cols-2 gap-2"><div><label className="text-[10px] text-slate-500 font-semibold block mb-1">ชนิด (3)</label><select name="iolType3" value={formData.iolType3 || '-'} onChange={handleChange} className="edit-input text-sm font-bold bg-white rounded cursor-pointer border-slate-300">{iolTypeOptions.filter(o => o !== 'อื่นๆ (พิมพ์เอง)').map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div><div><label className="text-[10px] text-slate-500 font-semibold block mb-1">เบอร์ (3)</label><select name="iolPower3" value={formData.iolPower3 || '-'} onChange={handleChange} className="edit-input text-sm font-bold bg-white rounded cursor-pointer border-slate-300">{iolPowerOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}</select></div></div>
-                        <button type="button" onClick={() => { setShowBackupIol(false); setFormData(p => ({...p, iolType2: '-', iolPower2: '-', iolType3: '-', iolPower3: '-'})); }} className="text-[10px] text-red-500 hover:underline w-full text-right mt-1">ลบเลนส์เพิ่มเติม</button>
-                      </div>
-                    )}
-                  </div>
-                  <div className="col-span-2"><label className="text-sm text-slate-500 font-semibold block mb-1">เบอร์โทรศัพท์</label><input type="text" name="tel" value={formData.tel || ''} onChange={handleChange} placeholder="เช่น 081.., 082.." className="edit-input font-mono" /></div>
-                  <div className="col-span-2"><label className="text-sm text-slate-500 font-semibold block mb-1">หมายเหตุ (Note)</label><input type="text" name="note" value={formData.note || ''} onChange={handleChange} className="edit-input" /></div>
-                </div>
-                <div className="pt-2">
-                  <label className="text-sm text-slate-500 font-semibold block mb-2">สถานที่</label>
-                  <div className="flex gap-4">
-                    <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm hover:bg-slate-50"><input type="radio" name="location" value="Hospital" checked={formData.location === 'Hospital'} onChange={handleChange} className="accent-slate-700 w-4 h-4" />Hospital</label>
-                    <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm hover:bg-slate-50"><input type="radio" name="location" value="Clinic" checked={formData.location === 'Clinic'} onChange={handleChange} className="accent-slate-700 w-4 h-4" />Clinic</label>
-                  </div>
-                </div>
-              </form>
-            </div>
-            <div className="p-4 border-t border-slate-200 bg-white shrink-0 flex justify-between items-center rounded-b-3xl">
-              <button type="button" onClick={() => onSave({...formData, delete: true})} className="px-4 py-2 rounded-xl font-bold text-red-500 bg-red-50 hover:bg-red-100 transition-colors border border-red-100">🗑️ ลบ</button>
-              <div className="flex gap-2">
-                <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">ยกเลิก</button>
-                <button type="submit" form="patient-form" className="px-6 py-2 rounded-xl font-bold text-white bg-sky-600 hover:bg-sky-700 transition-colors shadow-md">💾 บันทึก</button>
-              </div>
-            </div>
+        {(patient.iol1 || patient.iol2 || patient.iol3) && (
+          <div className="flex flex-wrap items-center gap-1 mt-1">
+            <span className="font-semibold">IOL:</span>
+            {patient.iol1 && <span className="bg-white px-2 py-0.5 rounded border border-gray-300">{patient.iol1}</span>}
+            {patient.iol2 && <span className="bg-white px-2 py-0.5 rounded border border-gray-300 text-gray-500">{patient.iol2}</span>}
+            {patient.iol3 && <span className="bg-white px-2 py-0.5 rounded border border-gray-300 text-gray-500">{patient.iol3}</span>}
+            {patient.iolApptDate && <span className="text-xs text-red-600 ml-1">(นัด: {formatThaiDate(patient.iolApptDate)})</span>}
           </div>
+        )}
+      </div>
+
+      <div className="flex justify-between items-end text-sm">
+        <div className="flex items-center gap-1 opacity-80"><Phone size={12}/> {patient.phone || '-'}</div>
+        {patient.note && (
+          <div className="flex items-center gap-1 text-red-600 font-medium">
+            <AlertCircle size={14} /> {patient.note}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const YearCalendarView = () => (
+    <div className="p-4 md:p-6 animate-in fade-in duration-300">
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
+        
+        {/* กล่องซ้าย (Spacer ให้สมดุล) */}
+        <div className="hidden sm:block sm:w-1/3"></div>
+
+        {/* ตัวเลือกปี (ตรงกลาง) */}
+        <div className="flex justify-center items-center gap-6">
+          <button onClick={() => setCurrentYear(y => y - 1)} className="p-2 bg-white rounded-full shadow hover:bg-gray-50 transition">
+            <ChevronLeft size={24} className="text-gray-600" />
+          </button>
+          <h2 className="text-3xl font-bold text-blue-900 bg-white/50 px-8 py-2 rounded-2xl border-2 border-blue-200 backdrop-blur-sm">
+            ปี {currentYear + 543}
+          </h2>
+          <button onClick={() => setCurrentYear(y => y + 1)} className="p-2 bg-white rounded-full shadow hover:bg-gray-50 transition">
+            <ChevronRight size={24} className="text-gray-600" />
+          </button>
         </div>
-      );
-    };
 
-    function App() {
-      const [currentView, setCurrentView] = useState('calendar'); 
-      const [viewYear, setViewYear] = useState(2026); 
-      const [activeDate, setActiveDate] = useState(new Date(2026, 3, 1));
-      
-      const [plannerData, setPlannerData] = useState({ '2026-04-01': mockAprilFirst });
-      
-      const [editingCard, setEditingCard] = useState(null);
-      const [draggedCardId, setDraggedCardId] = useState(null);
-      const [dragOverZone, setDragOverZone] = useState(null);
-      const [selectedCards, setSelectedCards] = useState([]);
-      const [clipboard, setClipboard] = useState(null);
-      const [isCapturing, setIsCapturing] = useState(false); 
-      const [capturedImage, setCapturedImage] = useState(null);
+        {/* ปุ่มตั้งวันหยุด (ขวา) */}
+        <div className="w-full sm:w-1/3 flex justify-end">
+          <button 
+            onClick={() => setIsEditHolidayMode(!isEditHolidayMode)}
+            className={`px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-sm transition-all duration-300 ${
+              isEditHolidayMode 
+                ? 'bg-red-500 text-white hover:bg-red-600 animate-pulse' 
+                : 'bg-white text-gray-700 border-2 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {isEditHolidayMode ? <Unlock size={18} /> : <Lock size={18} />}
+            {isEditHolidayMode ? 'ปิดโหมดตั้งวันหยุด' : 'ตั้งวันหยุด'}
+          </button>
+        </div>
 
-      const [searchQuery, setSearchQuery] = useState('');
-      const [isSearchOpen, setIsSearchOpen] = useState(false);
-      const [dashboardMonth, setDashboardMonth] = useState(new Date().getMonth());
+      </div>
 
-      const [csvDataForModal, setCsvDataForModal] = useState(null);
+      {isEditHolidayMode && (
+        <div className="text-center mb-6 text-red-600 font-bold bg-red-100 py-2 rounded-xl animate-in slide-in-from-top-4">
+          👆 ตอนนี้อยู่ในโหมดตั้งวันหยุด: จิ้มที่วันที่ในปฏิทินเพื่อ ล็อก/ปลดล็อก ได้เลยฮะ
+        </div>
+      )}
 
-      const activeDateKey = getFormattedDateKey(activeDate);
-      const currentCards = plannerData[activeDateKey] || [];
-      const boardDateString = `${activeDate.getDate()} ${months[activeDate.getMonth()]} ${activeDate.getFullYear() + 543}`;
-
-      useEffect(() => { setSelectedCards([]); }, [activeDateKey, currentView]);
-
-      const searchResults = useMemo(() => {
-        if (!searchQuery.trim()) return [];
-        const query = searchQuery.toLowerCase();
-        let results = [];
-        Object.entries(plannerData).forEach(([dateStr, cards]) => {
-          cards.forEach(card => {
-            if ((card.name && card.name.toLowerCase().includes(query)) || 
-                (card.hn && card.hn.includes(query)) ||
-                (card.tel && card.tel.includes(query))) {
-              results.push({ dateStr, card });
-            }
-          });
-        });
-        return results.sort((a,b) => new Date(a.dateStr) - new Date(b.dateStr));
-      }, [searchQuery, plannerData]);
-
-      const goToPatientDate = (dateStr) => {
-        const [y, m, d] = dateStr.split('-');
-        setActiveDate(new Date(y, m - 1, d));
-        setViewYear(parseInt(y));
-        setCurrentView('daily');
-        setIsSearchOpen(false);
-        setSearchQuery('');
-      };
-
-      const dashboardStats = useMemo(() => {
-        const monthPrefix = `${viewYear}-${String(dashboardMonth + 1).padStart(2, '0')}`;
-        let total = 0, reCount = 0, leCount = 0, smcCount = 0;
-        let procCount = {};
-        
-        Object.entries(plannerData).forEach(([dateStr, cards]) => {
-          if (dateStr.startsWith(monthPrefix)) {
-            cards.forEach(c => {
-              total++;
-              if (c.zone === 'smc') smcCount++;
-              if (c.procedure?.includes('RE')) reCount++;
-              if (c.procedure?.includes('LE')) leCount++;
-              
-              const p = c.procedure || 'ไม่ระบุ';
-              procCount[p] = (procCount[p] || 0) + 1;
-            });
-          }
-        });
-        const topProcs = Object.entries(procCount).sort((a,b) => b[1] - a[1]).slice(0, 5);
-        return { total, reCount, leCount, smcCount, topProcs };
-      }, [plannerData, viewYear, dashboardMonth]);
-
-      const exportToCSV = () => {
-        const monthPrefix = `${viewYear}-${String(dashboardMonth + 1).padStart(2, '0')}`;
-        let csvContent = "\uFEFF"; 
-        csvContent += "วันที่ผ่าตัด,โซน,สถานที่,หัตถการ,ชื่อ-สกุล,อายุ,HN,นัด IOL,เบอร์โทร,เลนส์ 1,เบอร์ 1,เลนส์ 2,เบอร์ 2,เลนส์ 3,เบอร์ 3,Note\n";
-        
-        const filteredEntries = Object.entries(plannerData)
-          .filter(([dateStr]) => dateStr.startsWith(monthPrefix))
-          .sort((a,b) => new Date(a[0]) - new Date(b[0]));
-
-        if (filteredEntries.length === 0) {
-          alert(`ไม่มีข้อมูลคิวผ่าตัดในเดือน ${months[dashboardMonth]} ${viewYear}`);
-          return;
-        }
-
-        filteredEntries.forEach(([dateStr, cards]) => {
-          cards.forEach(c => {
-            const escapeCSV = (str) => `"${(str || '').toString().replace(/"/g, '""')}"`;
-            const row = [
-              dateStr, c.zone === 'smc' ? 'SMC' : 'ปกติ', c.location || '-', escapeCSV(c.procedure), escapeCSV(c.name),
-              c.age || '-', escapeCSV(c.hn), c.iolDate || '-', escapeCSV(c.tel),
-              c.iolType || '-', c.iolPower || '-', c.iolType2 || '-', c.iolPower2 || '-', c.iolType3 || '-', c.iolPower3 || '-',
-              escapeCSV(c.note)
-            ];
-            csvContent += row.join(",") + "\n";
-          });
-        });
-
-        setCsvDataForModal(csvContent);
-
-        try {
-          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-          const link = document.createElement("a");
-          const url = URL.createObjectURL(blob);
-          link.setAttribute("href", url);
-          link.setAttribute("download", `คิวผ่าตัด_${months[dashboardMonth]}_${viewYear}.csv`);
-          link.style.visibility = 'hidden';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        } catch(e) {
-          console.log("ดาวน์โหลดตรงๆ ไม่ผ่าน โชว์ Modal สำรองฮะ");
-        }
-      };
-
-      const handleCopyCsvToClipboard = () => {
-        const textArea = document.createElement("textarea"); 
-        textArea.value = csvDataForModal; 
-        document.body.appendChild(textArea); 
-        textArea.select();
-        try { 
-          document.execCommand('copy'); 
-          alert("✅ ก๊อปปี้ข้อมูลเสร็จแล้ว! เอาไป Paste ลงในตาราง Excel หรือ Google Sheets ได้เลยฮะ"); 
-        } 
-        catch (err) { console.error('ก๊อปปี้ไม่สำเร็จ!', err); }
-        document.body.removeChild(textArea);
-      };
-
-      const handleBulkCopy = () => {
-        const selectedData = currentCards.filter(c => selectedCards.includes(c.id));
-        const patientsText = selectedData.map((data, index) => {
-          const iol1 = formatIOLDisplay(data.iolType, data.iolPower);
-          const iol2 = formatIOLDisplay(data.iolType2, data.iolPower2);
-          const iol3 = formatIOLDisplay(data.iolType3, data.iolPower3);
-          let iolText = iol1;
-          if (iol2 !== '-') iolText += `, ${iol2}`;
-          if (iol3 !== '-') iolText += `, ${iol3}`;
-          return `${index + 1}. ${data.name || '-'}\nHN: ${data.hn || '-'}\nโทร: ${data.tel || '-'}\nหัตถการ: ${data.procedure || '-'}\nIOL: ${iolText}`;
-        }).join('\n\n'); 
-        const textToCopy = `📅 วันที่ผ่าตัด: ${boardDateString}\n\n${patientsText}`;
-        const textArea = document.createElement("textarea"); textArea.value = textToCopy; document.body.appendChild(textArea); textArea.select();
-        try { document.execCommand('copy'); alert(`✅ ก๊อปปี้ข้อมูล ${selectedData.length} คิว เรียบร้อย!`); setSelectedCards([]); } 
-        catch (err) { console.error('ก๊อปปี้ไม่สำเร็จ!', err); }
-        document.body.removeChild(textArea);
-      };
-
-      const handleCutToClipboard = () => {
-        const selectedData = currentCards.filter(c => selectedCards.includes(c.id));
-        setClipboard({ fromDateKey: activeDateKey, cards: selectedData }); setSelectedCards([]);
-      };
-
-      const handlePasteFromClipboard = () => {
-        if (!clipboard) return;
-        setPlannerData(prev => {
-          const newData = { ...prev };
-          const cutIds = clipboard.cards.map(c => c.id);
-          newData[clipboard.fromDateKey] = (newData[clipboard.fromDateKey] || []).filter(c => !cutIds.includes(c.id));
-          newData[activeDateKey] = [...(newData[activeDateKey] || []), ...clipboard.cards];
-          return newData;
-        });
-        setClipboard(null);
-      };
-
-      const handleDragStart = (e, id) => { e.dataTransfer.setData('text/plain', id.toString()); e.dataTransfer.effectAllowed = 'move'; setDraggedCardId(id); };
-      const handleDragOverZone = (e, zone) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOverZone(zone); };
-      
-      const handleDropOnZone = (e, targetZone) => {
-        e.preventDefault(); const id = draggedCardId; if (!id) return;
-        setPlannerData(prev => {
-          const cards = [...(prev[activeDateKey] || [])]; const draggedIndex = cards.findIndex(c => c.id === id);
-          if (draggedIndex > -1) { const [draggedCard] = cards.splice(draggedIndex, 1); draggedCard.zone = targetZone; cards.push(draggedCard); }
-          return { ...prev, [activeDateKey]: cards };
-        });
-        setDragOverZone(null); setDraggedCardId(null);
-      };
-
-      const handleDropOnCard = (e, targetCard) => {
-        e.stopPropagation(); e.preventDefault(); const id = draggedCardId; if (!id || id === targetCard.id) return;
-        setPlannerData(prev => {
-          const cards = [...(prev[activeDateKey] || [])]; const draggedIndex = cards.findIndex(c => c.id === id);
-          if (draggedIndex > -1) {
-            const [draggedCard] = cards.splice(draggedIndex, 1); draggedCard.zone = targetCard.zone;
-            const targetIndex = cards.findIndex(c => c.id === targetCard.id);
-            if (targetIndex > -1) cards.splice(targetIndex, 0, draggedCard); else cards.push(draggedCard);
-          }
-          return { ...prev, [activeDateKey]: cards };
-        });
-        setDragOverZone(null); setDraggedCardId(null);
-      };
-
-      const getCardsByZone = (zone) => currentCards.filter(c => c.zone === zone);
-
-      const handleSaveCard = (updatedCard) => {
-        setPlannerData(prev => {
-          const newData = { ...prev }; const oldDateKey = activeDateKey; const newDateKey = updatedCard.targetDate; 
-          if (updatedCard.delete) {
-            newData[oldDateKey] = (newData[oldDateKey] || []).filter(c => c.id !== updatedCard.id);
-            setSelectedCards(s => s.filter(id => id !== updatedCard.id));
-            if (clipboard) setClipboard(c => ({ ...c, cards: c.cards.filter(card => card.id !== updatedCard.id) }));
-            return newData;
-          } 
-          if (updatedCard.id === 'new') {
-            const target = newDateKey || oldDateKey; newData[target] = [...(newData[target] || []), { ...updatedCard, id: Date.now() }];
-            return newData;
-          } 
-          if (newDateKey && newDateKey !== oldDateKey) {
-            newData[oldDateKey] = (newData[oldDateKey] || []).filter(c => c.id !== updatedCard.id); newData[newDateKey] = [...(newData[newDateKey] || []), updatedCard];
-          } else {
-            newData[oldDateKey] = (newData[oldDateKey] || []).map(c => c.id === updatedCard.id ? updatedCard : c);
-          }
-          return newData;
-        });
-        setEditingCard(null);
-      };
-
-      const openDayView = (dateObj) => { setActiveDate(dateObj); setCurrentView('daily'); };
-      
-      const generateMonthDays = (year, monthIndex) => {
-        const firstDay = new Date(year, monthIndex, 1).getDay(); const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
-        const days = Array(firstDay).fill(null); for (let i = 1; i <= daysInMonth; i++) days.push(new Date(year, monthIndex, i)); return days;
-      };
-
-      const handleExportImage = async () => {
-        if (!window.html2canvas) { alert('กำลังเตรียมเลนส์กล้องแป๊บนึงฮะ... ลองกดใหม่อีกทีนะ'); return; }
-        setIsCapturing(true);
-        setTimeout(async () => {
-          try {
-            await document.fonts.ready; const element = document.getElementById('capture-board');
-            const canvas = await window.html2canvas(element, { scale: window.devicePixelRatio || 2, useCORS: true, backgroundColor: '#f8fafc', logging: false });
-            setCapturedImage(canvas.toDataURL('image/png'));
-          } catch (err) { console.error('ถ่ายรูปไม่สำเร็จฮะ', err); alert('อุ้ย! เกิดข้อผิดพลาดตอนถ่ายรูป ลองใหม่อีกทีนะฮะ'); } 
-          finally { setIsCapturing(false); }
-        }, 500); 
-      };
-
-      return (
-        <div className="min-h-screen p-2 md:p-6 flex justify-center items-start selection:bg-sky-200 relative font-sans">
-          <FontStyle />
-          
-          {/* ================= MODAL สำรองตอนโหลด EXCEL ================= */}
-          {csvDataForModal && (
-            <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[600] flex flex-col items-center justify-center p-4 pop-in handwriting">
-              <div className="bg-white p-6 rounded-3xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col relative border-4 border-green-200">
-                <h2 className="text-2xl font-bold text-green-700 mb-2">📊 ข้อมูล Excel ของคุณพร้อมแล้ว!</h2>
-                <p className="text-slate-600 mb-4 leading-tight">
-                  ให้กด <span className="font-bold text-green-600">"📋 ก๊อปปี้ข้อมูล"</span> 
-                  แล้วเปิดตาราง Excel หรือ Google Sheets เปล่าๆ ขึ้นมา กด <span className="font-bold text-sky-600">Paste (วาง)</span> ได้เลยฮะ ข้อมูลจะเรียงเข้าช่องสวยงามเป๊ะ!
-                </p>
-
-                <textarea readOnly className="flex-1 w-full p-4 bg-slate-50 border border-slate-300 rounded-xl text-[10px] font-mono hide-scroll mb-4 text-slate-500 shadow-inner" value={csvDataForModal} />
-
-                <div className="flex gap-3 justify-end mt-2">
-                  <button onClick={() => setCsvDataForModal(null)} className="px-5 py-2 rounded-2xl font-bold bg-slate-200 text-slate-700 hover:bg-slate-300 transition-colors">ปิดหน้าต่าง</button>
-                  <button onClick={handleCopyCsvToClipboard} className="px-6 py-2 rounded-2xl font-bold bg-green-500 text-white hover:bg-green-600 shadow-md transition-transform hover:-translate-y-1 flex items-center gap-2">
-                    📋 ก๊อปปี้ข้อมูล
-                  </button>
-                </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        {thaiMonthsFull.map((monthName, monthIndex) => {
+          const grid = getMonthGrid(currentYear, monthIndex);
+          return (
+            <div key={monthIndex} className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border-2 border-gray-200 card-shadow">
+              <h3 className="text-xl font-bold text-center mb-3 text-gray-700">{monthName}</h3>
+              <div className="grid grid-cols-7 text-center text-xs font-bold text-gray-400 mb-2">
+                {daysOfWeek.map(d => <div key={d} className={d === 'อา' ? 'text-red-400' : ''}>{d}</div>)}
               </div>
-            </div>
-          )}
-
-          <div className="bg-white rounded-3xl shadow-[0_20px_50px_-12px_rgba(0,0,0,0.2)] overflow-hidden max-w-[1400px] w-full border border-slate-200 relative flex flex-col">
-            
-            {clipboard && clipboard.cards.length > 0 && (
-              <div className="bg-orange-500 text-white text-center py-2 font-bold flex justify-center items-center gap-4 z-50">
-                <span>✂️ กำลังตัดคิว {clipboard.cards.length} รายการ... ให้ไปเปิดวันที่ต้องการ แล้วกด "วางคิว"</span>
-                <button onClick={() => setClipboard(null)} className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded text-sm transition-colors">ยกเลิก</button>
-              </div>
-            )}
-
-            {/* ================= SEARCH MODAL ================= */}
-            {isSearchOpen && (
-              <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[600] flex justify-center p-4 pt-20 pop-in handwriting">
-                <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl flex flex-col h-fit max-h-[80vh] border-4 border-sky-100">
-                  <div className="p-4 border-b border-slate-200 flex gap-3 items-center bg-slate-50 rounded-t-2xl">
-                    <span className="text-2xl">🔍</span>
-                    <input 
-                      autoFocus type="text" placeholder="ค้นหา ชื่อ, HN, เบอร์โทร..." 
-                      value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                      className="flex-1 bg-transparent text-xl font-bold text-slate-800 outline-none placeholder:text-slate-400"
-                    />
-                    <button onClick={() => {setIsSearchOpen(false); setSearchQuery('');}} className="bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-full w-8 h-8 font-bold">✖</button>
-                  </div>
-                  <div className="overflow-y-auto p-2 flex-1 bg-slate-100/50 rounded-b-3xl">
-                    {searchQuery && searchResults.length === 0 && <div className="text-center p-8 text-slate-400 font-bold">ไม่พบข้อมูลคนไข้นะฮะ 🥲</div>}
-                    {searchQuery && searchResults.length > 0 && (
-                      <div className="flex flex-col gap-2 p-2">
-                        <div className="text-sm font-bold text-sky-600 px-2">เจอทั้งหมด {searchResults.length} คิว</div>
-                        {searchResults.map((res, i) => (
-                          <div key={i} onClick={() => goToPatientDate(res.dateStr)} className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 hover:border-sky-400 hover:shadow-md cursor-pointer transition-all flex justify-between items-center group">
-                            <div>
-                              <div className="font-bold text-slate-800 text-lg group-hover:text-sky-600 transition-colors">{res.card.name || '-'}</div>
-                              <div className="text-sm text-slate-500 font-mono">HN: {res.card.hn || '-'} | โทร: {res.card.tel || '-'}</div>
-                              <div className="text-xs font-bold text-sky-700 bg-sky-50 inline-block px-2 py-0.5 rounded mt-1">{res.card.procedure || '-'}</div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-xs text-slate-400 font-bold mb-1">📅 วันที่ผ่าตัด</div>
-                              <div className="font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-lg">{formatDisplayDate(res.dateStr)}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {!searchQuery && <div className="text-center p-8 text-slate-400 font-bold opacity-50 text-xl">พิมพ์เพื่อค้นหาคิวได้เลยฮะ ✨</div>}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ================= VIEW: DASHBOARD ================= */}
-            {currentView === 'dashboard' && (
-              <div className="pop-in flex flex-col h-full bg-slate-50 pat-grid relative">
-                <div className="relative bg-slate-100 px-6 pt-6 pb-6 border-b border-slate-200 shrink-0 shadow-sm z-10 flex justify-between items-center flex-wrap gap-4">
-                  <div className="flex items-center gap-4">
-                    <button onClick={() => setCurrentView('calendar')} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-2xl font-bold shadow-sm border border-slate-200 transition-all handwriting">
-                      ⬅️ กลับ
-                    </button>
-                    <h1 className="text-3xl font-black text-slate-800 handwriting drop-shadow-sm flex items-center gap-2">
-                      📊 สถิติรายเดือน
-                    </h1>
-                  </div>
+              <div className="grid grid-cols-7 gap-1">
+                {grid.map((dateStr, i) => {
+                  if (!dateStr) return <div key={i} className="p-2" />;
+                  const dayNum = parseInt(dateStr.split('-')[2]);
+                  const stats = dateStats[dateStr] || { normal: 0, smc: 0 };
+                  const hasCases = stats.normal > 0 || stats.smc > 0;
+                  const isToday = dateStr === getTodayString();
+                  const isLocked = lockedDays.includes(dateStr);
                   
-                  <div className="flex gap-3 items-center handwriting">
-                    <select 
-                      value={dashboardMonth} onChange={(e) => setDashboardMonth(Number(e.target.value))}
-                      className="bg-white border-2 border-sky-300 text-sky-800 font-bold text-lg px-4 py-1.5 rounded-2xl shadow-sm outline-none cursor-pointer"
+                  // จัดการสไตล์ของปุ่มตามโหมดที่เลือก
+                  let btnStyle = "relative flex flex-col items-center justify-start pt-1 pb-4 rounded-lg transition-all h-12 border border-transparent ";
+                  
+                  if (isLocked) {
+                    btnStyle += "bg-gray-200 text-gray-400 border-gray-300 ";
+                    if (isEditHolidayMode) btnStyle += "hover:bg-red-200 hover:text-red-700 cursor-pointer ";
+                  } else if (isToday) {
+                    btnStyle += "bg-blue-100 text-blue-700 ring-2 ring-blue-400 font-bold ";
+                    if (isEditHolidayMode) btnStyle += "hover:bg-red-100 hover:text-red-700 cursor-pointer ";
+                    else btnStyle += "hover:scale-110 hover:z-10 cursor-pointer ";
+                  } else {
+                    btnStyle += "text-gray-700 font-semibold ";
+                    if (isEditHolidayMode) btnStyle += "hover:bg-red-50 hover:text-red-700 cursor-pointer ";
+                    else btnStyle += "hover:bg-gray-100 hover:scale-110 hover:z-10 cursor-pointer ";
+                  }
+                  
+                  return (
+                    <button 
+                      key={dateStr}
+                      onClick={() => {
+                        if (isEditHolidayMode) {
+                          toggleLockDay(dateStr);
+                        } else {
+                          goToDay(dateStr);
+                        }
+                      }}
+                      className={btnStyle}
                     >
-                      {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                      <span className="text-sm z-10">{dayNum}</span>
+                      {isLocked && <Lock size={14} className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 ${isEditHolidayMode ? 'text-red-500 opacity-60' : 'text-gray-600 opacity-20'}`} />}
+                      
+                      {/* โชว์ Badge เคส ถ้าไม่ได้อยู่ในโหมดแก้ */}
+                      {hasCases && !isLocked && (
+                        <div className="absolute bottom-0.5 flex gap-0.5 px-0.5 w-full justify-center">
+                          {stats.normal > 0 && <span className="bg-[#4ADE80] text-green-900 text-[9px] px-1 rounded-sm shadow-sm">{stats.normal}</span>}
+                          {stats.smc > 0 && <span className="bg-[#FDE047] text-yellow-900 text-[9px] px-1 rounded-sm shadow-sm">{stats.smc}</span>}
+                        </div>
+                      )}
+                      {/* ถ้าล็อกแล้วมีเคสค้างอยู่ ให้โชว์เป็นสีเทาเตือนไว้หน่อย */}
+                      {hasCases && isLocked && (
+                        <div className="absolute bottom-0.5 flex gap-0.5 px-0.5 w-full justify-center opacity-50">
+                          <span className="bg-gray-400 text-white text-[9px] px-1 rounded-sm shadow-sm">{stats.normal + stats.smc}</span>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  const Dashboard = () => {
+    const currentMonthStr = currentDate.substring(0, 7);
+    const mData = patients.filter(p => p.date.startsWith(currentMonthStr));
+    const smcCount = mData.filter(p => p.zone === 'SMC').length;
+
+    const procCounts = mData.reduce((acc, p) => {
+      acc[p.procedure] = (acc[p.procedure] || 0) + 1;
+      return acc;
+    }, {});
+
+    return (
+      <div className="p-6 animate-in fade-in duration-300 max-w-4xl mx-auto">
+        <h2 className="text-2xl font-bold mb-6 flex items-center gap-2 text-gray-800">
+          <BarChart3 className="text-blue-600" /> สถิติเดือน {formatThaiDate(currentDate).split(' ')[1]} {formatThaiDate(currentDate).split(' ')[2]}
+        </h2>
+        
+        <div className="grid grid-cols-2 gap-4 mb-8">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border-2 border-blue-200 text-center flex flex-col justify-center">
+            <div className="text-5xl font-bold text-blue-600 mb-2">{mData.length}</div>
+            <div className="text-gray-600 font-bold text-lg">จำนวนเคสทั้งหมด</div>
+          </div>
+          <div className="bg-white p-6 rounded-2xl shadow-sm border-2 border-yellow-300 text-center flex flex-col justify-center">
+            <div className="text-5xl font-bold text-yellow-600 mb-2">{smcCount}</div>
+            <div className="text-yellow-700 font-bold text-lg">SMC (พิเศษ)</div>
+          </div>
+        </div>
+
+        <h3 className="text-xl font-bold mb-4 text-gray-700 flex items-center gap-2 border-b-2 border-gray-200 pb-2">
+          <CheckCircle2 size={20} className="text-gray-500"/> สัดส่วนรายหัตถการ
+        </h3>
+        
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          {Object.entries(procCounts).map(([proc, count]) => (
+            <div key={proc} className={`p-4 rounded-xl shadow-sm border-2 text-center card-shadow ${getProcedureColor(proc)}`}>
+               <div className="text-4xl font-bold mb-1">{count}</div>
+               <div className="font-semibold opacity-90">{proc}</div>
+            </div>
+          ))}
+          {Object.keys(procCounts).length === 0 && (
+            <div className="col-span-4 text-center text-gray-400 py-10 bg-white rounded-xl border-2 border-dashed border-gray-200 font-medium">
+              ยังไม่มีข้อมูลหัตถการในเดือนนี้ฮะ
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen paper-bg text-gray-800 pb-20">
+      {/* Top Navbar */}
+      <nav className="bg-white/80 backdrop-blur-md border-b-2 border-gray-200 sticky top-0 z-40 px-4 py-3 flex flex-wrap justify-between items-center gap-4">
+        <div className="flex items-center gap-2 cursor-pointer" onClick={() => { setView('year'); setCurrentYear(parseInt(currentDate.split('-')[0])); }}>
+          <div className="bg-blue-600 text-white p-2 rounded-xl"><CalendarDays size={24} /></div>
+          <h1 className="text-xl font-bold tracking-tight hidden sm:block">Kram Planner</h1>
+        </div>
+        
+        <div className="flex items-center gap-1 bg-gray-100 p-1.5 rounded-xl border-2 border-gray-200">
+          <button onClick={() => setView('year')} className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition-colors ${view === 'year' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>
+            <Calendar size={18}/> <span className="hidden md:inline">รายปี</span>
+          </button>
+          <button onClick={() => setView('day')} className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition-colors ${view === 'day' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>
+            <CalendarDays size={18}/> <span className="hidden md:inline">รายวัน</span>
+          </button>
+          <button onClick={() => setView('dashboard')} className={`px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 transition-colors ${view === 'dashboard' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-800'}`}>
+            <BarChart3 size={18}/> <span className="hidden md:inline">สถิติ</span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button onClick={() => setIsSearchOpen(true)} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-xl transition text-gray-600">
+            <Search size={20} />
+          </button>
+          <button onClick={exportToCSV} className="p-2 bg-green-100 text-green-700 hover:bg-green-200 rounded-xl transition flex items-center gap-1">
+            <FileSpreadsheet size={20} /> <span className="hidden sm:inline text-sm font-bold">Excel</span>
+          </button>
+        </div>
+      </nav>
+
+      {cutPatientId && (
+        <div className="bg-yellow-100 border-b-2 border-yellow-300 p-3 flex justify-between items-center sticky top-[68px] z-30 shadow-sm animate-pulse">
+          <div className="flex items-center gap-2 text-yellow-800 font-semibold text-sm md:text-base">
+            <Scissors size={18} /> กำลังตัดคิว... กรุณาเลือกวันที่ใหม่แล้วกดวาง
+          </div>
+          {view === 'day' && (
+             <button onClick={handlePaste} className="bg-yellow-400 hover:bg-yellow-500 text-yellow-900 px-4 py-1.5 rounded-lg font-bold flex items-center gap-2 shadow">
+               <ClipboardPaste size={18} /> วางที่นี่
+             </button>
+          )}
+        </div>
+      )}
+
+      {/* Main Content Area */}
+      <div className="max-w-7xl mx-auto">
+        {view === 'year' && <YearCalendarView />}
+        {view === 'dashboard' && <Dashboard />}
+        {view === 'day' && (
+          <div className="px-4 mt-6 animate-in slide-in-from-right-8 duration-300">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-6 gap-4">
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => {
+                    setCurrentYear(parseInt(currentDate.split('-')[0]));
+                    setView('year');
+                  }} 
+                  className="bg-white p-2.5 rounded-xl shadow hover:bg-gray-50 border-2 border-gray-200 transition-colors"
+                >
+                  <ArrowLeft className="text-gray-600" />
+                </button>
+                <div>
+                  <label className="block text-sm font-bold text-gray-500 mb-1">วันที่กำลังดูคิว</label>
+                  <input 
+                    type="date" 
+                    value={currentDate} 
+                    onChange={(e) => setCurrentDate(e.target.value)}
+                    className="bg-white border-2 border-gray-300 rounded-xl px-4 py-2 text-lg font-bold shadow-sm focus:ring-2 focus:ring-blue-400 outline-none"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 w-full md:w-auto overflow-x-auto hide-scrollbar pb-1">
+                <button onClick={copyToLine} className="bg-[#00B900] text-white px-4 py-2 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm hover:opacity-90 transition whitespace-nowrap">
+                  <Copy size={18} /> ส่ง LINE
+                </button>
+                <button onClick={exportToImage} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold flex items-center justify-center gap-2 shadow-sm hover:bg-indigo-700 transition whitespace-nowrap">
+                  <ImageIcon size={18} /> แคปรูป
+                </button>
+              </div>
+            </div>
+
+            <div id="day-capture-area" className="relative grid grid-cols-1 md:grid-cols-2 gap-6 p-4 -mx-4 md:mx-0 md:p-6 bg-transparent rounded-2xl">
+              
+              {/* ถ้าล็อกวัน จะมีป้ายแบนเนอร์โชว์ทับ */}
+              {isCurrentDateLocked && (
+                <div className="absolute inset-0 bg-red-500/10 backdrop-blur-[2px] z-10 rounded-2xl flex items-center justify-center pointer-events-none border-4 border-red-500/20">
+                  <div className="bg-red-600 text-white px-8 py-3 rounded-2xl font-bold text-2xl shadow-xl flex items-center gap-3 transform -rotate-2">
+                    <Lock size={32} /> วันหยุด / ไม่รับคิว
+                  </div>
+                </div>
+              )}
+
+              <div className="bg-white/50 backdrop-blur p-4 rounded-2xl border-2 border-gray-200">
+                <div className="flex justify-between items-center mb-4 pb-2 border-b-2 border-gray-300">
+                  <h2 className="text-xl font-bold text-gray-700">🟢 โซนปกติ <span className="bg-gray-200 text-gray-600 text-sm px-2 py-1 rounded-full">{normalQueue.length}</span></h2>
+                </div>
+                <div className="min-h-[300px]">
+                  {normalQueue.map(p => <PatientCard key={p.id} patient={p} />)}
+                  {normalQueue.length === 0 && <div className="text-center text-gray-400 mt-10 italic">ยังไม่มีคิว...</div>}
+                </div>
+              </div>
+
+              <div className="bg-white/50 backdrop-blur p-4 rounded-2xl border-2 border-yellow-200">
+                <div className="flex justify-between items-center mb-4 pb-2 border-b-2 border-yellow-300">
+                  <h2 className="text-xl font-bold text-yellow-700">🟡 โซน SMC <span className="bg-yellow-200 text-yellow-800 text-sm px-2 py-1 rounded-full">{smcQueue.length}</span></h2>
+                </div>
+                <div className="min-h-[300px]">
+                  {smcQueue.map(p => <PatientCard key={p.id} patient={p} />)}
+                  {smcQueue.length === 0 && <div className="text-center text-gray-400 mt-10 italic">ยังไม่มีคิว...</div>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {(view === 'day' || view === 'year') && (
+        <button 
+          onClick={() => {
+            if (view === 'year') setCurrentDate(getTodayString()); 
+            openForm();
+          }}
+          className={`fixed bottom-8 right-8 text-white w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-transform hover:scale-105 z-40 
+            ${isCurrentDateLocked && view === 'day' ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'}`}
+        >
+          <Plus size={32} />
+        </button>
+      )}
+
+      {/* --- Modal จัดการหัตถการ --- */}
+      {isManageProcsOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl border-2 border-gray-200 overflow-hidden">
+             <div className="bg-blue-50 px-4 py-3 border-b-2 border-blue-100 flex justify-between items-center">
+              <h2 className="font-bold text-blue-900 flex items-center gap-2"><Settings size={18}/> จัดการหัตถการ</h2>
+              <button onClick={() => setIsManageProcsOpen(false)} className="text-gray-500 hover:text-gray-800"><X size={20}/></button>
+            </div>
+            <div className="p-4">
+              <div className="flex gap-2 mb-4">
+                <input 
+                  type="text" value={newProcName} onChange={e => setNewProcName(e.target.value)}
+                  placeholder="เช่น ฉีดยาเข้าวุ้นตา..."
+                  className="flex-1 border-2 border-gray-300 rounded-xl px-3 py-2 outline-none focus:border-blue-500 text-sm"
+                  onKeyDown={e => { if(e.key === 'Enter') addNewProcedure(); }}
+                />
+                <button onClick={addNewProcedure} className="bg-blue-600 text-white px-3 rounded-xl font-bold hover:bg-blue-700 text-sm">เพิ่ม</button>
+              </div>
+              <div className="max-h-60 overflow-y-auto space-y-2 border-t pt-2 hide-scrollbar">
+                {procedures.map(proc => (
+                  <div key={proc.name} className={`flex justify-between items-center p-2 rounded-lg border shadow-sm ${proc.color}`}>
+                    <span className="font-semibold text-sm">{proc.name}</span>
+                    <button onClick={() => deleteProcedure(proc.name)} className="text-red-500 hover:bg-red-100 p-1.5 rounded-lg bg-white/50"><Trash2 size={16}/></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- Modal จัดการป้ายกำกับหมายเหตุ --- */}
+      {isManageNotesOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl border-2 border-gray-200 overflow-hidden">
+             <div className="bg-blue-50 px-4 py-3 border-b-2 border-blue-100 flex justify-between items-center">
+              <h2 className="font-bold text-blue-900 flex items-center gap-2"><Tag size={18}/> จัดการป้ายหมายเหตุ</h2>
+              <button onClick={() => setIsManageNotesOpen(false)} className="text-gray-500 hover:text-gray-800"><X size={20}/></button>
+            </div>
+            <div className="p-4">
+              <div className="flex gap-2 mb-4">
+                <input 
+                  type="text" value={newNoteName} onChange={e => setNewNoteName(e.target.value)}
+                  placeholder="เช่น ขอคิวบ่าย, ผู้ป่วยติดเตียง..."
+                  className="flex-1 border-2 border-gray-300 rounded-xl px-3 py-2 outline-none focus:border-blue-500 text-sm"
+                  onKeyDown={e => { if(e.key === 'Enter') addNewNote(); }}
+                />
+                <button onClick={addNewNote} className="bg-blue-600 text-white px-3 rounded-xl font-bold hover:bg-blue-700 text-sm">เพิ่ม</button>
+              </div>
+              <div className="max-h-60 overflow-y-auto space-y-2 border-t pt-2 hide-scrollbar">
+                {presetNotes.map(note => (
+                  <div key={note} className="flex justify-between items-center p-2 rounded-lg border shadow-sm bg-gray-50 text-gray-700">
+                    <span className="font-semibold text-sm">{note}</span>
+                    <button onClick={() => deletePresetNote(note)} className="text-red-500 hover:bg-red-100 p-1.5 rounded-lg bg-white"><Trash2 size={16}/></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- Modal จัดการป้ายชื่อเลนส์ (IOLs) --- */}
+      {isManageIOLsOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[60]">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl border-2 border-gray-200 overflow-hidden">
+             <div className="bg-blue-50 px-4 py-3 border-b-2 border-blue-100 flex justify-between items-center">
+              <h2 className="font-bold text-blue-900 flex items-center gap-2"><Disc size={18}/> จัดการชื่อเลนส์ (IOL)</h2>
+              <button onClick={() => setIsManageIOLsOpen(false)} className="text-gray-500 hover:text-gray-800"><X size={20}/></button>
+            </div>
+            <div className="p-4">
+              <div className="flex gap-2 mb-4">
+                <input 
+                  type="text" value={newIOLName} onChange={e => setNewIOLName(e.target.value)}
+                  placeholder="เช่น Alcon, Tecnis..."
+                  className="flex-1 border-2 border-gray-300 rounded-xl px-3 py-2 outline-none focus:border-blue-500 text-sm"
+                  onKeyDown={e => { if(e.key === 'Enter') addNewIOL(); }}
+                />
+                <button onClick={addNewIOL} className="bg-purple-600 text-white px-3 rounded-xl font-bold hover:bg-purple-700 text-sm">เพิ่ม</button>
+              </div>
+              <div className="max-h-60 overflow-y-auto space-y-2 border-t pt-2 hide-scrollbar">
+                {presetIOLs.map(iol => (
+                  <div key={iol} className="flex justify-between items-center p-2 rounded-lg border shadow-sm bg-purple-50 text-purple-800">
+                    <span className="font-semibold text-sm">{iol}</span>
+                    <button onClick={() => deletePresetIOL(iol)} className="text-red-500 hover:bg-red-100 p-1.5 rounded-lg bg-white"><Trash2 size={16}/></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- Add/Edit Modal (ฟอร์มหลัก) --- */}
+      {isFormOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden border-2 border-gray-200 flex flex-col max-h-[90vh]">
+            <div className="bg-blue-50 px-6 py-4 border-b-2 border-blue-100 flex justify-between items-center shrink-0">
+              <h2 className="text-xl font-bold text-blue-900">{editingId ? '✏️ แก้ไขคิว' : '📝 เพิ่มคิวใหม่'}</h2>
+              <button onClick={() => setIsFormOpen(false)} className="text-gray-400 hover:text-gray-700"><X size={24} /></button>
+            </div>
+            
+            <form onSubmit={savePatient} className="p-6 overflow-y-auto flex-1 hide-scrollbar">
+              
+              <div className="mb-6 bg-gray-100 p-1.5 rounded-xl flex gap-1 border-2 border-gray-200">
+                <button 
+                  type="button" 
+                  onClick={() => setFormData({...formData, zone: 'Normal'})} 
+                  className={`flex-1 py-2.5 rounded-lg font-bold text-sm transition-all ${formData.zone === 'Normal' ? 'bg-white shadow-md text-green-600 ring-2 ring-green-400' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  🟢 โซนปกติ (Normal)
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setFormData({...formData, zone: 'SMC'})} 
+                  className={`flex-1 py-2.5 rounded-lg font-bold text-sm transition-all ${formData.zone === 'SMC' ? 'bg-white shadow-md text-yellow-600 ring-2 ring-yellow-400' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  🟡 โซนพิเศษ (SMC)
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="col-span-2">
+                  <label className="block text-sm font-bold text-gray-600 mb-1">วันที่ผ่าตัด</label>
+                  <input type="date" required value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full border-2 border-gray-300 rounded-xl px-3 py-2 bg-blue-50 focus:bg-white outline-none focus:border-blue-500 font-bold"/>
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-sm font-bold text-gray-600 mb-1">ชื่อ-สกุล</label>
+                  <input type="text" required value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full border-2 border-gray-300 rounded-xl px-3 py-2 outline-none focus:border-blue-500" placeholder="นาย ก ไก่"/>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-600 mb-1">HN</label>
+                  <input type="text" value={formData.hn} onChange={e => setFormData({...formData, hn: e.target.value})} className="w-full border-2 border-gray-300 rounded-xl px-3 py-2 outline-none focus:border-blue-500"/>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-600 mb-1">อายุ</label>
+                  <input type="number" value={formData.age} onChange={e => setFormData({...formData, age: e.target.value})} className="w-full border-2 border-gray-300 rounded-xl px-3 py-2 outline-none focus:border-blue-500"/>
+                </div>
+                
+                <div className="col-span-2">
+                  <label className="block text-sm font-bold text-gray-600 mb-1">หัตถการ</label>
+                  <div className="flex gap-2">
+                    <select 
+                      value={formData.procedure} 
+                      onChange={e => setFormData({...formData, procedure: e.target.value})} 
+                      className="flex-1 border-2 border-gray-300 rounded-xl px-3 py-2 outline-none focus:border-blue-500 bg-white font-medium"
+                    >
+                      {procedures.map((proc, idx) => (
+                        <option key={idx} value={proc.name}>{proc.name}</option>
+                      ))}
                     </select>
-                    
-                    <button onClick={exportToCSV} className="bg-green-500 hover:bg-green-600 text-white px-5 py-2 rounded-2xl font-bold shadow-md transition-all flex items-center gap-2 hover:-translate-y-0.5">
-                      📥 โหลด Excel
+                    <button type="button" onClick={() => setIsManageProcsOpen(true)} className="px-3 bg-gray-100 hover:bg-gray-200 border-2 border-gray-300 rounded-xl font-bold flex items-center justify-center text-gray-600" title="ตั้งค่าหัตถการ">
+                       <Settings size={20}/>
                     </button>
                   </div>
                 </div>
 
-                <div className="p-6 md:p-10 overflow-y-auto flex-1 handwriting relative z-10">
-                  <div className="max-w-4xl mx-auto space-y-6">
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-sm flex flex-col items-center justify-center text-center hover:border-sky-300 transition-colors">
-                        <div className="text-slate-500 font-bold mb-2">เคสผ่าตัดทั้งหมด</div>
-                        <div className="text-6xl font-black text-sky-600 drop-shadow-sm">{dashboardStats.total}</div>
-                        <div className="text-sm font-bold text-slate-400 mt-2 bg-slate-50 px-3 py-1 rounded-full">เดือน {months[dashboardMonth]}</div>
-                      </div>
-                      <div className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-sm flex flex-col justify-center gap-4">
-                        <div className="flex justify-between items-end border-b-2 border-dashed border-amber-200 pb-2">
-                          <span className="font-bold text-amber-700 text-lg">ตาขวา (RE)</span>
-                          <span className="text-3xl font-black text-amber-500">{dashboardStats.reCount}</span>
-                        </div>
-                        <div className="flex justify-between items-end border-b-2 border-dashed border-indigo-200 pb-2">
-                          <span className="font-bold text-indigo-700 text-lg">ตาซ้าย (LE)</span>
-                          <span className="text-3xl font-black text-indigo-500">{dashboardStats.leCount}</span>
-                        </div>
-                      </div>
-                      <div className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-sm flex flex-col items-center justify-center text-center">
-                        <div className="text-slate-500 font-bold mb-2 text-lg">สัดส่วน SMC</div>
-                        <div className="text-4xl font-black text-pink-500 drop-shadow-sm">{dashboardStats.smcCount} <span className="text-xl text-slate-400">เคส</span></div>
-                        <div className="w-full bg-slate-100 h-3 rounded-full mt-4 overflow-hidden border border-slate-200">
-                          <div className="bg-pink-400 h-full stat-bar rounded-full" style={{ width: `${dashboardStats.total > 0 ? (dashboardStats.smcCount/dashboardStats.total)*100 : 0}%` }}></div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-3xl p-6 md:p-8 border-2 border-slate-200 shadow-sm">
-                      <h3 className="text-xl font-black text-slate-700 mb-6 flex items-center gap-2">🏆 ท็อป 5 หัตถการยอดฮิต</h3>
-                      {dashboardStats.topProcs.length > 0 ? (
-                        <div className="space-y-4">
-                          {dashboardStats.topProcs.map(([proc, count], idx) => {
-                            const percentage = (count / dashboardStats.total) * 100;
-                            return (
-                              <div key={proc} className="flex flex-col gap-1">
-                                <div className="flex justify-between text-sm font-bold text-slate-700">
-                                  <span className="bg-slate-100 px-2 py-0.5 rounded">{proc}</span>
-                                  <span>{count} เคส</span>
-                                </div>
-                                <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden border border-slate-200">
-                                  <div className="bg-sky-400 h-full stat-bar rounded-full" style={{ width: `${percentage}%`, backgroundColor: `hsl(${200 - idx*20}, 80%, 60%)` }}></div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="text-center p-8 text-slate-400 font-bold bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                          ยังไม่มีข้อมูลในเดือนนี้นะฮะ 📭
-                        </div>
-                      )}
-                    </div>
-
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ================= VIEW: YEARLY CALENDAR ================= */}
-            {currentView === 'calendar' && (
-              <div className="pop-in flex flex-col h-full bg-slate-50 pat-grid relative">
-                <DecorStickers />
-                <div className="relative bg-slate-100 px-4 pt-6 pb-6 border-b border-slate-200 shrink-0 shadow-sm z-10">
-                  <div className="flex justify-between items-center px-2 md:px-8 relative z-10 handwriting">
-                    
-                    <div className="flex gap-2">
-                      <button onClick={() => setViewYear(y => y - 1)} className="text-2xl hover:bg-white/80 px-3 py-1.5 rounded-xl transition-all bg-white/50 backdrop-blur-md shadow-sm border border-white text-slate-600">◀</button>
-                      <button onClick={() => setViewYear(y => y + 1)} className="text-2xl hover:bg-white/80 px-3 py-1.5 rounded-xl transition-all bg-white/50 backdrop-blur-md shadow-sm border border-white text-slate-600">▶</button>
-                    </div>
-                    
-                    <div className="text-center">
-                      <h1 className="text-4xl md:text-6xl font-black text-slate-800 tracking-wider drop-shadow-sm">ปี {viewYear}</h1>
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      <button onClick={() => setIsSearchOpen(true)} className="bg-white hover:bg-sky-50 text-sky-700 px-3 md:px-4 py-2 rounded-xl font-bold shadow-sm border border-sky-100 transition-all flex items-center gap-2">
-                        🔍 <span className="hidden md:inline">ค้นหา</span>
-                      </button>
-                      <button onClick={() => setCurrentView('dashboard')} className="bg-white hover:bg-indigo-50 text-indigo-700 px-3 md:px-4 py-2 rounded-xl font-bold shadow-sm border border-indigo-100 transition-all flex items-center gap-2">
-                        📊 <span className="hidden md:inline">สถิติ/Excel</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-4 md:p-8 overflow-y-auto hide-scroll flex-1 h-[70vh] handwriting z-10">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {months.map((monthName, mIndex) => {
-                      const monthDays = generateMonthDays(viewYear, mIndex);
-                      const theme = monthThemes[mIndex];
-                      return (
-                        <div key={mIndex} className={`${theme.bg} rounded-3xl shadow-sm border border-slate-200 p-5 transition-all hover:shadow-lg hover:-translate-y-1`}>
-                          <h3 className={`text-xl font-black mb-3 text-center ${theme.header} bg-white/70 border rounded-xl py-1.5 shadow-sm uppercase tracking-wide flex items-center justify-center gap-2`}>
-                            {monthName} <span>{theme.icon}</span>
-                          </h3>
-                          <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-600/80 mb-2">{thaiDays.map(d => <div key={d}>{d}</div>)}</div>
-                          <div className="grid grid-cols-7 gap-1.5 text-center">
-                            {monthDays.map((dateObj, idx) => {
-                              if (!dateObj) return <div key={`empty-${idx}`} className="p-1 aspect-square bg-white/30 rounded-lg"></div>;
-                              const dateKeyStr = getFormattedDateKey(dateObj);
-                              const dayCards = plannerData[dateKeyStr] || [];
-                              
-                              const activeCards = dayCards.filter(c => !(clipboard && clipboard.fromDateKey === dateKeyStr && clipboard.cards.some(cutCard => cutCard.id === c.id)));
-                              const normalCount = activeCards.filter(c => c.zone === 'normal').length;
-                              const smcCount = activeCards.filter(c => c.zone === 'smc').length;
-                              const totalCount = normalCount + smcCount;
-                              const isToday = getFormattedDateKey(new Date()) === dateKeyStr;
-
-                              return (
-                                <div key={dateKeyStr} onClick={() => openDayView(dateObj)} className={`p-1 bg-white/90 rounded-xl flex flex-col items-center justify-start aspect-square cursor-pointer transition-all shadow-sm ${isToday ? 'border-2 border-sky-400 scale-110 z-10 shadow-md' : 'hover:scale-110 hover:shadow-md border border-slate-100 hover:border-sky-300'} ${clipboard && clipboard.fromDateKey !== dateKeyStr ? 'animate-pulse hover:border-orange-400' : ''}`}>
-                                  <span className={`font-bold text-[14px] ${isToday ? 'text-sky-600' : 'text-slate-700'}`}>{dateObj.getDate()}</span>
-                                  {totalCount > 0 && (
-                                    <div className="flex flex-col items-center mt-auto w-full gap-[2px]">
-                                      {normalCount > 0 && <span className="text-[10px] text-sky-800 font-bold bg-sky-100 rounded-md w-full text-center truncate leading-tight shadow-sm border border-sky-200">{normalCount}🧢</span>}
-                                      {smcCount > 0 && <span className="text-[10px] text-indigo-800 font-bold bg-indigo-100 rounded-md w-full text-center truncate leading-tight shadow-sm border border-indigo-200">{smcCount}🍩</span>}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div className="h-4 w-full bg-slate-200 shrink-0"></div>
-              </div>
-            )}
-
-            {/* ================= VIEW: DAILY BOARD ================= */}
-            {currentView === 'daily' && (
-              <div id="capture-board" className="slide-in flex flex-col h-full bg-slate-50 pat-grid relative">
-                <DecorStickers />
-                
-                {!isCapturing && (
-                  <button onClick={() => setEditingCard({ id: 'new', zone: 'normal', procedure: 'PE+IOL RE', name: '', age: '', hn: '', iolDate: '', iolType: '-', iolPower: '-', tel: '', note: '', location: 'Hospital', color: getProcedureColor('PE+IOL RE') })} className="absolute top-[100px] right-4 md:top-[100px] md:right-8 z-50 bg-sky-500 text-white rounded-full w-14 h-14 flex items-center justify-center shadow-xl hover:bg-sky-600 hover:scale-110 transition-all font-black text-3xl border-4 border-white hide-on-capture" title="เพิ่มคิวผ่าตัด">+</button>
-                )}
-
-                <div className="relative bg-slate-100 px-4 pt-6 pb-8 border-b border-slate-200 z-20 shrink-0 shadow-sm">
-                  <div className="flex items-center justify-between relative z-10 handwriting">
-                    
-                    <div className="flex gap-2">
-                      {!isCapturing && (
-                        <button onClick={() => setCurrentView('calendar')} className="bg-white/80 hover:bg-white text-slate-700 px-4 py-2.5 rounded-2xl font-bold flex items-center shadow-sm border border-white transition-all hover:-translate-x-1 hide-on-capture">
-                          ⬅️ <span className="hidden md:inline ml-2">ปฏิทิน</span>
-                        </button>
-                      )}
-                      {!isCapturing && (
-                        <button onClick={handleExportImage} className="bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 text-white px-4 py-2.5 rounded-2xl font-bold flex items-center shadow-md border-2 border-white transition-all hover:scale-105 hide-on-capture">
-                          📸 <span className="hidden md:inline ml-2">ถ่ายรูปหน้าจอ</span>
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 md:gap-4 bg-white/80 px-8 py-3 rounded-3xl backdrop-blur-md border-2 border-white shadow-md mx-auto">
-                      <span className="text-3xl md:text-5xl font-black text-slate-700">{fullThaiDays[activeDate.getDay()]}</span>
-                      <span className="text-3xl md:text-5xl font-black text-sky-600 border-b-4 border-sky-400 pb-1">{activeDate.getDate()}.</span>
-                      <span className="text-3xl md:text-5xl font-black text-slate-800 drop-shadow-sm">
-                        {months[activeDate.getMonth()]} {activeDate.getFullYear()}
-                      </span>
-                    </div>
-                    
-                    <div className="w-[180px] hidden md:block"></div> 
-                  </div>
-                </div>
-
-                <div className="p-4 md:p-8 flex flex-col gap-8 flex-1 overflow-x-hidden overflow-y-auto hide-scroll h-[70vh] z-10 pb-32">
+                <div className="col-span-2 bg-gray-50 p-3 rounded-xl border-2 border-gray-200 mt-2">
+                  <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-1">
+                     <Disc size={16} className="text-purple-600"/> ข้อมูลเลนส์ (IOL)
+                  </label>
                   
-                  <div 
-                    onDragEnter={(e) => e.preventDefault()} 
-                    onDragOver={(e) => handleDragOverZone(e, 'normal')} 
-                    onDragLeave={() => setDragOverZone(null)} 
-                    onDrop={(e) => handleDropOnZone(e, 'normal')} 
-                    className={`flex flex-col gap-4 rounded-3xl p-5 transition-all border-2 backdrop-blur-sm ${dragOverZone === 'normal' ? 'bg-sky-50/90 border-dashed border-sky-400 shadow-inner' : 'bg-white/80 border-slate-200 shadow-md'}`}
-                  >
-                    <div className="flex items-center gap-3 mb-2 border-b-2 border-slate-100 pb-3">
-                      <span className="text-2xl drop-shadow-sm">🧢</span>
-                      <h3 className="font-black text-2xl text-slate-700 handwriting tracking-wide">คิวปกติ</h3>
-                      <span className="bg-sky-100 text-sky-800 px-3 py-1 rounded-xl text-sm font-bold ml-auto border border-sky-200 shadow-sm">{getCardsByZone('normal').length} คิว</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5 min-h-[160px]">
-                      {getCardsByZone('normal').map(data => 
-                        <PatientCard 
-                          key={data.id} data={data} boardDate={boardDateString} 
-                          onEditClick={setEditingCard} onDragStart={handleDragStart} onDropOnCard={handleDropOnCard} 
-                          isDragged={draggedCardId === data.id} 
-                          isSelected={selectedCards.includes(data.id)} onSelect={toggleCardSelection}
-                          isCut={clipboard && clipboard.fromDateKey === activeDateKey && clipboard.cards.some(c => c.id === data.id)}
-                          isCapturing={isCapturing}
-                        />
-                      )}
-                      {getCardsByZone('normal').length === 0 && <div className="col-span-full flex items-center justify-center handwriting text-xl text-slate-400 opacity-60 border-2 border-dashed border-slate-300 rounded-2xl min-h-[160px] bg-slate-50/80 pointer-events-none">➕ ลากคิวมาวางที่นี่</div>}
-                    </div>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {presetIOLs.map(iol => (
+                      <button 
+                        type="button" 
+                        key={iol} 
+                        onClick={() => addIOLToForm(iol)} 
+                        className="bg-purple-100 border border-purple-200 text-purple-800 px-2 py-1 rounded-lg text-xs font-bold hover:bg-purple-200 transition shadow-sm"
+                      >
+                        + {iol}
+                      </button>
+                    ))}
+                    <button 
+                      type="button" 
+                      onClick={() => setIsManageIOLsOpen(true)} 
+                      className="bg-white border border-gray-300 text-gray-600 px-2 py-1 rounded-lg text-xs font-bold hover:bg-gray-100 transition flex items-center gap-1 shadow-sm"
+                    >
+                      <Settings size={12}/> จัดการ
+                    </button>
                   </div>
 
-                  <div 
-                    onDragEnter={(e) => e.preventDefault()} 
-                    onDragOver={(e) => handleDragOverZone(e, 'smc')} 
-                    onDragLeave={() => setDragOverZone(null)} 
-                    onDrop={(e) => handleDropOnZone(e, 'smc')} 
-                    className={`flex flex-col gap-4 rounded-3xl p-5 transition-all border-2 backdrop-blur-sm ${dragOverZone === 'smc' ? 'bg-indigo-50/90 border-dashed border-indigo-400 shadow-inner' : 'bg-white/80 border-slate-200 shadow-md'}`}
-                  >
-                    <div className="flex items-center gap-3 mb-2 border-b-2 border-slate-100 pb-3">
-                      <span className="text-3xl md:text-4xl font-black text-sky-500 tracking-widest px-5 py-2 bg-white/80 rounded-2xl border-2 border-sky-300 shadow-sm ml-1">🍩 S M C</span>
-                      <span className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-xl text-sm font-bold ml-auto border border-indigo-200 shadow-sm">{getCardsByZone('smc').length} คิว</span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-5 min-h-[160px] mt-2">
-                      {getCardsByZone('smc').map(data => 
-                        <PatientCard 
-                          key={data.id} data={data} boardDate={boardDateString}
-                          onEditClick={setEditingCard} onDragStart={handleDragStart} onDropOnCard={handleDropOnCard} 
-                          isDragged={draggedCardId === data.id} 
-                          isSelected={selectedCards.includes(data.id)} onSelect={toggleCardSelection}
-                          isCut={clipboard && clipboard.fromDateKey === activeDateKey && clipboard.cards.some(c => c.id === data.id)}
-                          isCapturing={isCapturing}
-                        />
-                      )}
-                      {getCardsByZone('smc').length === 0 && <div className="col-span-full flex items-center justify-center handwriting text-xl text-slate-400 opacity-60 border-2 border-dashed border-slate-300 rounded-2xl min-h-[160px] bg-slate-50/80 pointer-events-none">➕ ลากคิว SMC มาวางที่นี่</div>}
-                    </div>
+                  <div className="grid grid-cols-3 gap-2 mb-2">
+                    <input type="text" placeholder="เลนส์หลัก" value={formData.iol1} onChange={e => setFormData({...formData, iol1: e.target.value})} className="w-full border border-gray-300 rounded-lg px-2 py-1 text-sm outline-none focus:border-purple-500 focus:bg-purple-50"/>
+                    <input type="text" placeholder="สำรอง 1" value={formData.iol2} onChange={e => setFormData({...formData, iol2: e.target.value})} className="w-full border border-gray-300 rounded-lg px-2 py-1 text-sm outline-none focus:border-purple-500 focus:bg-purple-50"/>
+                    <input type="text" placeholder="สำรอง 2" value={formData.iol3} onChange={e => setFormData({...formData, iol3: e.target.value})} className="w-full border border-gray-300 rounded-lg px-2 py-1 text-sm outline-none focus:border-purple-500 focus:bg-purple-50"/>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-gray-600 whitespace-nowrap">วันนัด IOL:</span>
+                    <input type="date" value={formData.iolApptDate} onChange={e => setFormData({...formData, iolApptDate: e.target.value})} className="border border-gray-300 rounded-lg px-2 py-1 text-sm outline-none focus:border-blue-500 flex-1"/>
+                  </div>
+                </div>
 
+                <div className="col-span-2">
+                  <label className="block text-sm font-bold text-gray-600 mb-1">เบอร์โทร</label>
+                  <input type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full border-2 border-gray-300 rounded-xl px-3 py-2 outline-none focus:border-blue-500"/>
                 </div>
                 
-                {/* ================= FLOATING ACTION BAR ================= */}
-                {(!isCapturing && (selectedCards.length > 0 || clipboard)) && (
-                  <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-white/95 backdrop-blur-md px-6 py-4 rounded-full shadow-2xl border-4 border-sky-300 flex items-center gap-6 z-[400] pop-in handwriting hide-on-capture">
-                    {clipboard ? (
-                      <>
-                        <span className="font-bold text-slate-700 text-lg">
-                          {clipboard.fromDateKey === activeDateKey 
-                            ? `ตัดคิวไว้ ${clipboard.cards.length} คน (ไปวางวันอื่น)` 
-                            : `มีคิวรอวาง ${clipboard.cards.length} คน`}
-                        </span>
-                        <div className="flex gap-2">
-                          {clipboard.fromDateKey !== activeDateKey && (
-                            <button onClick={handlePasteFromClipboard} className="bg-orange-500 text-white px-5 py-2 rounded-2xl font-bold shadow-md hover:bg-orange-600 transition-colors hover:-translate-y-1 animate-bounce">📌 วางคิวลงวันนี้</button>
-                          )}
-                          <button onClick={() => setClipboard(null)} className="bg-slate-200 text-slate-600 px-5 py-2 rounded-2xl font-bold hover:bg-slate-300 transition-colors">ยกเลิกตัด</button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <span className="font-bold text-slate-700 text-lg">เลือกแล้ว <span className="text-sky-600 text-2xl">{selectedCards.length}</span> คิว</span>
-                        <div className="flex gap-2">
-                          <button onClick={handleBulkCopy} className="bg-sky-500 text-white px-5 py-2 rounded-2xl font-bold shadow-md hover:bg-sky-600 transition-colors hover:-translate-y-1">📋 ก๊อปปี้ส่ง LINE</button>
-                          <button onClick={handleCutToClipboard} className="bg-orange-500 text-white px-5 py-2 rounded-2xl font-bold shadow-md hover:bg-orange-600 transition-colors hover:-translate-y-1">✂️ ย้ายวัน (Cut)</button>
-                          <button onClick={() => setSelectedCards([])} className="bg-slate-200 text-slate-600 px-4 py-2 rounded-2xl font-bold hover:bg-slate-300 transition-colors">ล้าง</button>
-                        </div>
-                      </>
-                    )}
+                <div className="col-span-2">
+                  <label className="block text-sm font-bold text-gray-600 mb-1">Note / หมายเหตุ</label>
+                  <input 
+                    type="text" 
+                    value={formData.note} 
+                    onChange={e => setFormData({...formData, note: e.target.value})} 
+                    className="w-full border-2 border-gray-300 rounded-xl px-3 py-2 outline-none focus:border-blue-500 mb-2" 
+                    placeholder="พิมพ์เอง หรือกดเลือกจากป้ายด้านล่าง..."
+                  />
+                  
+                  <div className="flex flex-wrap gap-2">
+                    {presetNotes.map(note => (
+                      <button 
+                        type="button" 
+                        key={note} 
+                        onClick={() => addNoteToForm(note)} 
+                        className="bg-blue-50 border border-blue-200 text-blue-700 px-2 py-1 rounded-lg text-sm font-semibold hover:bg-blue-100 transition shadow-sm"
+                      >
+                        + {note}
+                      </button>
+                    ))}
+                    <button 
+                      type="button" 
+                      onClick={() => setIsManageNotesOpen(true)} 
+                      className="bg-white border border-gray-300 text-gray-600 px-2 py-1 rounded-lg text-sm font-bold hover:bg-gray-100 transition flex items-center gap-1 shadow-sm"
+                    >
+                      <Settings size={14}/> จัดการ
+                    </button>
                   </div>
-                )}
+                </div>
               </div>
-            )}
+
+              <div className="flex justify-between items-center mt-6 pt-4 border-t-2 border-gray-100 shrink-0">
+                {editingId ? (
+                  confirmPatientDelete ? (
+                    <div className="flex items-center gap-2 bg-red-50 px-2 py-1 rounded-xl border border-red-200 animate-in slide-in-from-left-2">
+                      <span className="text-sm font-bold text-red-600">แน่ใจนะ?</span>
+                      <button type="button" onClick={() => deletePatient(editingId)} className="bg-red-500 text-white text-sm font-bold px-3 py-1.5 rounded-lg hover:bg-red-600">ลบเลย</button>
+                      <button type="button" onClick={() => setConfirmPatientDelete(false)} className="bg-gray-200 text-gray-700 text-sm font-bold px-3 py-1.5 rounded-lg hover:bg-gray-300">ยกเลิก</button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => setConfirmPatientDelete(true)} className="text-red-500 font-bold flex items-center gap-1 hover:bg-red-50 px-3 py-2 rounded-lg transition"><Trash2 size={18}/> ลบ</button>
+                  )
+                ) : <div/>}
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setIsFormOpen(false)} className="px-4 py-2 text-gray-600 font-bold hover:bg-gray-100 rounded-xl">ยกเลิก</button>
+                  <button type="submit" className="px-6 py-2 bg-blue-600 text-white font-bold rounded-xl shadow-md hover:bg-blue-700">บันทึก</button>
+                </div>
+              </div>
+            </form>
           </div>
-          
-          {/* ================= MODAL โชว์รูปให้เซฟ ================= */}
-          {capturedImage && (
-            <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[600] flex flex-col items-center justify-center p-4 pop-in handwriting">
-              <div className="bg-white p-2 rounded-3xl shadow-2xl max-w-[90%] max-h-[85vh] flex flex-col relative border-4 border-sky-200">
-                <div className="bg-sky-100 text-sky-800 p-3 rounded-2xl mb-2 text-center font-bold flex flex-col items-center gap-1">
-                  <span className="text-xl">👇 แตะค้างที่รูปภาพ (หรือคลิกขวา) แล้วกดบันทึกรูปภาพได้เลยฮะ 👇</span>
-                  <span className="text-sm text-sky-600 font-normal">แอบกระซิบ: รูปที่ได้จะสวยและคมชัดกว่าที่เห็นบนจอนิดนึงนะฮะ ✨</span>
-                </div>
-                <div className="overflow-auto rounded-xl border border-slate-200 flex-1 relative hide-scroll bg-slate-100 flex justify-center items-center p-4">
-                  <img src={capturedImage} alt="Surgical Planner Board" className="max-w-full h-auto rounded shadow-md border border-slate-300" style={{ maxHeight: '60vh', objectFit: 'contain' }} />
-                </div>
-                <button onClick={() => setCapturedImage(null)} className="absolute -top-4 -right-4 bg-red-500 hover:bg-red-600 text-white w-10 h-10 rounded-full font-bold text-xl shadow-lg border-2 border-white transition-transform hover:scale-110">✖</button>
-              </div>
-            </div>
-          )}
-
-          {editingCard && <EditModal card={editingCard} activeDateKey={activeDateKey} onSave={handleSaveCard} onClose={() => setEditingCard(null)} />}
         </div>
-      );
-    }
+      )}
 
+      {/* --- Search Modal --- */}
+      {isSearchOpen && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 pt-20 z-50">
+          <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden border-2 border-gray-200">
+            <div className="p-4 border-b-2 border-gray-100 flex gap-2 items-center">
+              <Search className="text-gray-400" />
+              <input 
+                autoFocus
+                type="text" 
+                placeholder="ค้นหาชื่อ, HN, หรือเบอร์โทร..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-1 text-lg outline-none font-medium bg-transparent"
+              />
+              <button onClick={() => { setIsSearchOpen(false); setSearchQuery(''); }} className="text-gray-400 hover:text-gray-700 p-2"><X size={24} /></button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto p-2 bg-gray-50 hide-scrollbar">
+              {searchQuery ? patients.filter(p => {
+                const q = searchQuery.toLowerCase();
+                const nameMatch = (p.name || '').toLowerCase().includes(q);
+                const hnMatch = (p.hn || '').toLowerCase().includes(q);
+                const phoneMatch = (p.phone || '').includes(q);
+                return nameMatch || hnMatch || phoneMatch;
+              }).map(p => (
+                <div key={p.id} className="bg-white p-3 m-2 rounded-xl border border-gray-200 shadow-sm flex justify-between items-center hover:border-blue-400 transition cursor-pointer"
+                  onClick={() => {
+                    goToDay(p.date);
+                    setIsSearchOpen(false);
+                    setSearchQuery('');
+                  }}>
+                  <div>
+                    <div className="font-bold text-gray-800">{p.name} <span className="text-sm text-gray-500 font-normal">({p.hn})</span></div>
+                    <div className="text-sm text-blue-600">📅 ผ่าตัด: {formatThaiDate(p.date)} ({p.procedure})</div>
+                  </div>
+                  <div className="bg-blue-50 text-blue-700 px-3 py-1 rounded-lg text-sm font-bold">วาร์ปไปดู &rarr;</div>
+                </div>
+              )) : (
+                <div className="text-center text-gray-400 p-10">พิมพ์เพื่อค้นหาคิวคนไข้ทั้งหมด</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
 
 

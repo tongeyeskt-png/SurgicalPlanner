@@ -4,8 +4,22 @@ import {
   Copy, Image as ImageIcon, FileSpreadsheet, Plus, X, Edit3, 
   Trash2, Phone, CalendarDays, CheckCircle2, AlertCircle,
   ChevronLeft, ChevronRight, ArrowLeft, Settings, Tag, Disc,
-  Lock, Unlock
+  Lock, Unlock, Cloud
 } from 'lucide-react';
+
+// --- Firebase Imports ---
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+
+// --- Firebase Initialization (เดินสายไฟคลาวด์) ---
+const firebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config 
+  ? JSON.parse(__firebase_config) 
+  : { apiKey: "demo", projectId: "demo" };
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
 // --- Helper Functions ---
 const formatThaiDate = (dateString) => {
@@ -20,29 +34,20 @@ const getTodayString = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-// --- Palette สีสำหรับการ์ดหัตถการ ---
+// --- Default Settings ---
 const colorPalette = [
-  'bg-blue-100 border-blue-300 text-blue-900',
-  'bg-pink-100 border-pink-300 text-pink-900',
-  'bg-purple-100 border-purple-300 text-purple-900',
-  'bg-green-100 border-green-300 text-green-900',
-  'bg-orange-100 border-orange-300 text-orange-900',
-  'bg-teal-100 border-teal-300 text-teal-900',
-  'bg-rose-100 border-rose-300 text-rose-900',
-  'bg-cyan-100 border-cyan-300 text-cyan-900',
-  'bg-indigo-100 border-indigo-300 text-indigo-900',
-  'bg-lime-100 border-lime-300 text-lime-900'
+  'bg-blue-100 border-blue-300 text-blue-900', 'bg-pink-100 border-pink-300 text-pink-900',
+  'bg-purple-100 border-purple-300 text-purple-900', 'bg-green-100 border-green-300 text-green-900',
+  'bg-orange-100 border-orange-300 text-orange-900', 'bg-teal-100 border-teal-300 text-teal-900',
+  'bg-rose-100 border-rose-300 text-rose-900', 'bg-cyan-100 border-cyan-300 text-cyan-900',
+  'bg-indigo-100 border-indigo-300 text-indigo-900', 'bg-lime-100 border-lime-300 text-lime-900'
 ];
 
 const defaultProcedures = [
-  { name: 'Phaco ตาซ้าย', color: colorPalette[0] },
-  { name: 'Phaco ตาขวา', color: colorPalette[1] },
-  { name: 'ECCE สองตา', color: colorPalette[2] },
-  { name: 'ลอกต้อเนื้อ ตาซ้าย', color: colorPalette[3] },
-  { name: 'ลอกต้อเนื้อ ตาขวา', color: colorPalette[4] },
-  { name: 'ทำเลซิก', color: colorPalette[5] }
+  { name: 'Phaco ตาซ้าย', color: colorPalette[0] }, { name: 'Phaco ตาขวา', color: colorPalette[1] },
+  { name: 'ECCE สองตา', color: colorPalette[2] }, { name: 'ลอกต้อเนื้อ ตาซ้าย', color: colorPalette[3] },
+  { name: 'ลอกต้อเนื้อ ตาขวา', color: colorPalette[4] }, { name: 'ทำเลซิก', color: colorPalette[5] }
 ];
-
 const defaultNotes = ['เบาหวาน', 'ความดัน', 'ยาละลายลิ่มเลือด', 'ขอคิวเช้า', 'VIP'];
 const defaultIOLs = ['SN60WF', 'Clareon', 'PanOptix', 'Vivity', 'Eyhance', 'Alcon'];
 
@@ -54,20 +59,17 @@ const getMonthGrid = (year, month) => {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const grid = [];
   for (let i = 0; i < firstDay; i++) grid.push(null);
-  for (let i = 1; i <= daysInMonth; i++) {
-    grid.push(`${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
-  }
+  for (let i = 1; i <= daysInMonth; i++) grid.push(`${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
   return grid;
 };
 
-// --- Mock Data เดือนมกราคม ---
+// --- Mock Data ---
 const initialMockData = [
   { id: 'm1', name: 'คุณตา สมหมาย ใจดี', hn: 'HN00001', age: '72', phone: '081-111-1111', procedure: 'Phaco ตาซ้าย', zone: 'Normal', date: '2026-01-15', iol1: 'SN60WF 21.0D', iol2: '21.5D', iol3: '', iolApptDate: '2025-12-20', note: 'เบาหวาน ความดัน' },
   { id: 'm2', name: 'คุณยาย ศรีนวล รักไทย', hn: 'HN00002', age: '68', phone: '082-222-2222', procedure: 'Phaco ตาขวา', zone: 'Normal', date: '2026-01-15', iol1: 'Clareon 19.0D', iol2: '', iol3: '', iolApptDate: '', note: '' },
   { id: 'm3', name: 'ลุง ประเสริฐ ยอดเยี่ยม', hn: 'HN00003', age: '65', phone: '083-333-3333', procedure: 'ECCE สองตา', zone: 'Normal', date: '2026-01-15', iol1: 'Alcon 20.0D', iol2: '20.5D', iol3: '21.0D', iolApptDate: '', note: 'ขอคิวเช้า' },
   { id: 'm4', name: 'ป้า สมใจ พูนสุข', hn: 'HN00004', age: '60', phone: '084-444-4444', procedure: 'ลอกต้อเนื้อ ตาซ้าย', zone: 'Normal', date: '2026-01-15', iol1: '', iol2: '', iol3: '', iolApptDate: '', note: '' },
   { id: 'm5', name: 'พี่ สมศักดิ์ มั่งมี', hn: 'HN00005', age: '55', phone: '085-555-5555', procedure: 'Phaco ตาซ้าย', zone: 'Normal', date: '2026-01-15', iol1: 'SN60WF 22.0D', iol2: '', iol3: '', iolApptDate: '', note: '' },
-  
   { id: 'm6', name: 'คุณหญิง ดารา งามตา', hn: 'HN00006', age: '62', phone: '086-666-6666', procedure: 'Phaco ตาขวา', zone: 'SMC', date: '2026-01-15', iol1: 'PanOptix 18.5D', iol2: '19.0D', iol3: '', iolApptDate: '', note: 'VIP' },
   { id: 'm7', name: 'เถ้าแก่ ชัย เจริญรุ่ง', hn: 'HN00007', age: '70', phone: '087-777-7777', procedure: 'Phaco ตาซ้าย', zone: 'SMC', date: '2026-01-15', iol1: 'Vivity 20.0D', iol2: '', iol3: '', iolApptDate: '', note: 'ยาละลายลิ่มเลือด' },
   { id: 'm8', name: 'อ. วิทยา สว่างจิต', hn: 'HN00008', age: '58', phone: '088-888-8888', procedure: 'Phaco ตาซ้าย', zone: 'SMC', date: '2026-01-15', iol1: 'Eyhance 21.0D', iol2: '21.5D', iol3: '', iolApptDate: '', note: '' },
@@ -76,39 +78,17 @@ const initialMockData = [
 ];
 
 export default function App() {
-  // --- State Management ---
-  const [patients, setPatients] = useState(() => {
-    const saved = localStorage.getItem('surgical_planner_data');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.length > 0) return parsed;
-    }
-    return initialMockData;
-  });
+  // --- Cloud State ---
+  const [user, setUser] = useState(null);
+  const [patients, setPatients] = useState([]);
+  const [procedures, setProcedures] = useState(defaultProcedures);
+  const [presetNotes, setPresetNotes] = useState(defaultNotes);
+  const [presetIOLs, setPresetIOLs] = useState(defaultIOLs);
+  const [lockedDays, setLockedDays] = useState([]);
+  const [isCloudLoading, setIsCloudLoading] = useState(true);
 
-  const [procedures, setProcedures] = useState(() => {
-    const savedProcs = localStorage.getItem('surgical_planner_procedures');
-    return savedProcs ? JSON.parse(savedProcs) : defaultProcedures;
-  });
-
-  const [presetNotes, setPresetNotes] = useState(() => {
-    const savedNotes = localStorage.getItem('surgical_planner_notes');
-    return savedNotes ? JSON.parse(savedNotes) : defaultNotes;
-  });
-
-  const [presetIOLs, setPresetIOLs] = useState(() => {
-    const savedIOLs = localStorage.getItem('surgical_planner_iols');
-    return savedIOLs ? JSON.parse(savedIOLs) : defaultIOLs;
-  });
-
-  // ระบบวันหยุด (Locked Days)
-  const [lockedDays, setLockedDays] = useState(() => {
-    const savedLocked = localStorage.getItem('surgical_planner_locked');
-    return savedLocked ? JSON.parse(savedLocked) : [];
-  });
-  
+  // --- Local State ---
   const [currentDate, setCurrentDate] = useState(getTodayString());
-  // เปลี่ยนค่าเริ่มต้นให้เปิดมาเจอหน้า 'year' ปฏิทินรายปีก่อนเลย
   const [view, setView] = useState('year'); 
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
   
@@ -116,8 +96,6 @@ export default function App() {
   const [isManageProcsOpen, setIsManageProcsOpen] = useState(false);
   const [isManageNotesOpen, setIsManageNotesOpen] = useState(false);
   const [isManageIOLsOpen, setIsManageIOLsOpen] = useState(false);
-  
-  // State สำหรับ โหมดตั้งวันหยุด ในหน้ารายปี
   const [isEditHolidayMode, setIsEditHolidayMode] = useState(false);
   
   const [newProcName, setNewProcName] = useState('');
@@ -126,51 +104,41 @@ export default function App() {
 
   const [editingId, setEditingId] = useState(null);
   const [confirmPatientDelete, setConfirmPatientDelete] = useState(false); 
-  
   const [cutPatientId, setCutPatientId] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
-  // Form State
+  // แจ้งเตือนแบบไม่ใช้ alert()
+  const [notification, setNotification] = useState('');
+
   const [formData, setFormData] = useState({
-    name: '', hn: '', age: '', phone: '',
-    procedure: procedures[0]?.name || 'Phaco ตาซ้าย', 
+    name: '', hn: '', age: '', phone: '', procedure: '', 
     zone: 'Normal', date: currentDate,
     iol1: '', iol2: '', iol3: '', iolApptDate: '', note: ''
   });
 
-  // --- Effects ---
-  useEffect(() => localStorage.setItem('surgical_planner_data', JSON.stringify(patients)), [patients]);
-  useEffect(() => localStorage.setItem('surgical_planner_procedures', JSON.stringify(procedures)), [procedures]);
-  useEffect(() => localStorage.setItem('surgical_planner_notes', JSON.stringify(presetNotes)), [presetNotes]);
-  useEffect(() => localStorage.setItem('surgical_planner_iols', JSON.stringify(presetIOLs)), [presetIOLs]);
-  useEffect(() => localStorage.setItem('surgical_planner_locked', JSON.stringify(lockedDays)), [lockedDays]);
+  const showNotify = (msg) => {
+    setNotification(msg);
+    setTimeout(() => setNotification(''), 3000);
+  };
 
+  // --- Setup Environment ---
   useEffect(() => {
     if (!document.getElementById('mali-font')) {
-      const link = document.createElement('link');
-      link.id = 'mali-font';
-      link.href = 'https://fonts.googleapis.com/css2?family=Mali:wght@400;500;600;700&display=swap';
-      link.rel = 'stylesheet';
+      const link = document.createElement('link'); link.id = 'mali-font';
+      link.href = 'https://fonts.googleapis.com/css2?family=Mali:wght@400;500;600;700&display=swap'; link.rel = 'stylesheet';
       document.head.appendChild(link);
     }
     if (!document.getElementById('html2canvas-script')) {
-      const script = document.createElement('script');
-      script.id = 'html2canvas-script';
+      const script = document.createElement('script'); script.id = 'html2canvas-script';
       script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
       document.head.appendChild(script);
     }
-    
     if (!document.getElementById('paper-style')) {
-      const style = document.createElement('style');
-      style.id = 'paper-style';
+      const style = document.createElement('style'); style.id = 'paper-style';
       style.innerHTML = `
         body { font-family: 'Mali', cursive; }
-        .paper-bg {
-          background-color: #fdfbf7;
-          background-image: linear-gradient(#e5e7eb 1px, transparent 1px), linear-gradient(90deg, #e5e7eb 1px, transparent 1px);
-          background-size: 24px 24px;
-        }
+        .paper-bg { background-color: #fdfbf7; background-image: linear-gradient(#e5e7eb 1px, transparent 1px), linear-gradient(90deg, #e5e7eb 1px, transparent 1px); background-size: 24px 24px; }
         .card-shadow { box-shadow: 3px 4px 0px rgba(0,0,0,0.1); }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
         .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -178,6 +146,53 @@ export default function App() {
       document.head.appendChild(style);
     }
   }, []);
+
+  // --- Firebase Auth ---
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (err) {
+        console.error("Auth error:", err);
+      }
+    };
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, setUser);
+    return () => unsubscribe();
+  }, []);
+
+  // --- Firebase Data Syncing ---
+  useEffect(() => {
+    if (!user) return;
+
+    const patientsCol = collection(db, 'artifacts', appId, 'public', 'data', 'patients');
+    const unsubPatients = onSnapshot(patientsCol, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setPatients(data);
+      setIsCloudLoading(false);
+    }, (err) => {
+      console.error("Sync error:", err);
+      setIsCloudLoading(false);
+    });
+
+    const configCol = collection(db, 'artifacts', appId, 'public', 'data', 'config');
+    const unsubConfig = onSnapshot(configCol, (snapshot) => {
+      let p = defaultProcedures, n = defaultNotes, i = defaultIOLs, l = [];
+      snapshot.docs.forEach(doc => {
+        if (doc.id === 'procedures') p = doc.data().list || p;
+        if (doc.id === 'notes') n = doc.data().list || n;
+        if (doc.id === 'iols') i = doc.data().list || i;
+        if (doc.id === 'lockedDays') l = doc.data().list || l;
+      });
+      setProcedures(p); setPresetNotes(n); setPresetIOLs(i); setLockedDays(l);
+    }, (err) => console.error("Config sync error:", err));
+
+    return () => { unsubPatients(); unsubConfig(); };
+  }, [user]);
 
   // --- Data Derived ---
   const currentPatients = useMemo(() => patients.filter(p => p.date === currentDate), [patients, currentDate]);
@@ -200,7 +215,22 @@ export default function App() {
     return found ? found.color : 'bg-gray-100 border-gray-300 text-gray-800';
   };
 
-  // --- Handlers ---
+  // --- Cloud Mutation Wrappers ---
+  const updateConfig = async (docId, list) => {
+    if (!user) return;
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', docId), { list });
+  };
+
+  const seedMockDataToCloud = async () => {
+    if (!user) return;
+    showNotify('กำลังโหลดข้อมูลตัวอย่าง... ⏳');
+    for (const p of initialMockData) {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'patients', p.id), p);
+    }
+    showNotify('✅ โหลดข้อมูลตัวอย่างเดือน ม.ค. เรียบร้อยแล้วฮะ!');
+  };
+
+  // --- Form Handlers ---
   const openForm = (patient = null) => {
     setConfirmPatientDelete(false); 
     if (patient) {
@@ -218,27 +248,33 @@ export default function App() {
     setIsFormOpen(true);
   };
 
-  const savePatient = (e) => {
+  const savePatient = async (e) => {
     e.preventDefault();
-    if (editingId) {
-      setPatients(patients.map(p => p.id === editingId ? { ...formData, id: editingId } : p));
-    } else {
-      setPatients([...patients, { ...formData, id: Date.now().toString() }]);
-    }
+    if (!user) return;
+    const targetId = editingId || Date.now().toString();
+    const patientData = { ...formData, id: targetId };
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'patients', targetId), patientData);
     setIsFormOpen(false);
+    showNotify('✅ บันทึกคิวเรียบร้อย!');
   };
 
-  const deletePatient = (id) => {
-    setPatients(patients.filter(p => p.id !== id));
+  const deletePatient = async (id) => {
+    if (!user) return;
+    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'patients', id));
     if (cutPatientId === id) setCutPatientId(null);
     setIsFormOpen(false);
+    showNotify('🗑️ ลบคิวเรียบร้อย');
   };
 
   const handleCut = (id) => setCutPatientId(id);
 
-  const handlePaste = () => {
-    if (!cutPatientId) return;
-    setPatients(patients.map(p => p.id === cutPatientId ? { ...p, date: currentDate } : p));
+  const handlePaste = async () => {
+    if (!cutPatientId || !user) return;
+    const patientToMove = patients.find(p => p.id === cutPatientId);
+    if (patientToMove) {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'patients', cutPatientId), { ...patientToMove, date: currentDate });
+      showNotify('📌 ย้ายคิวเรียบร้อย!');
+    }
     setCutPatientId(null);
   };
 
@@ -247,58 +283,51 @@ export default function App() {
     setView('day');
   };
 
-  // อัปเกรดฟังก์ชัน Toggle ให้รับค่าวันที่ที่จิ้มเข้ามาได้เลย
   const toggleLockDay = (dateToToggle) => {
-    if (lockedDays.includes(dateToToggle)) {
-      setLockedDays(lockedDays.filter(d => d !== dateToToggle));
-    } else {
-      setLockedDays([...lockedDays, dateToToggle]);
-    }
+    const newLocked = lockedDays.includes(dateToToggle)
+      ? lockedDays.filter(d => d !== dateToToggle)
+      : [...lockedDays, dateToToggle];
+    updateConfig('lockedDays', newLocked);
   };
 
-  // --- จัดการหัตถการ ---
+  // --- Config Handlers ---
   const addNewProcedure = () => {
     if (!newProcName.trim()) return;
     const cleanName = newProcName.trim();
-    const exists = procedures.find(p => p.name.toLowerCase() === cleanName.toLowerCase());
-    if (!exists) {
+    if (!procedures.find(p => p.name.toLowerCase() === cleanName.toLowerCase())) {
       const newColor = colorPalette[procedures.length % colorPalette.length];
-      setProcedures([...procedures, { name: cleanName, color: newColor }]);
+      updateConfig('procedures', [...procedures, { name: cleanName, color: newColor }]);
       setNewProcName('');
     }
   };
   const deleteProcedure = (name) => {
-    setProcedures(procedures.filter(p => p.name !== name));
+    updateConfig('procedures', procedures.filter(p => p.name !== name));
     if (formData.procedure === name) setFormData({ ...formData, procedure: procedures[0]?.name || '' });
   };
 
-  // --- จัดการ หมายเหตุ ---
   const addNewNote = () => {
     if (!newNoteName.trim()) return;
     const cleanName = newNoteName.trim();
     if (!presetNotes.includes(cleanName)) {
-      setPresetNotes([...presetNotes, cleanName]);
+      updateConfig('notes', [...presetNotes, cleanName]);
       setNewNoteName('');
     }
   };
-  const deletePresetNote = (name) => setPresetNotes(presetNotes.filter(n => n !== name));
+  const deletePresetNote = (name) => updateConfig('notes', presetNotes.filter(n => n !== name));
   const addNoteToForm = (noteText) => {
     const currentNote = formData.note.trim();
-    if (currentNote) setFormData({ ...formData, note: `${currentNote} ${noteText}` });
-    else setFormData({ ...formData, note: noteText });
+    setFormData({ ...formData, note: currentNote ? `${currentNote} ${noteText}` : noteText });
   };
 
-  // --- จัดการ IOLs ---
   const addNewIOL = () => {
     if (!newIOLName.trim()) return;
     const cleanName = newIOLName.trim();
     if (!presetIOLs.includes(cleanName)) {
-      setPresetIOLs([...presetIOLs, cleanName]);
+      updateConfig('iols', [...presetIOLs, cleanName]);
       setNewIOLName('');
     }
   };
-  const deletePresetIOL = (name) => setPresetIOLs(presetIOLs.filter(n => n !== name));
-  
+  const deletePresetIOL = (name) => updateConfig('iols', presetIOLs.filter(n => n !== name));
   const addIOLToForm = (iolText) => {
     if (!formData.iol1) setFormData({ ...formData, iol1: iolText });
     else if (!formData.iol2) setFormData({ ...formData, iol2: iolText });
@@ -308,36 +337,60 @@ export default function App() {
 
   // --- Export Features ---
   const copyToLine = () => {
-    let text = `📅 วันที่ผ่าตัด: ${formatThaiDate(currentDate)}\n`;
-    if (isCurrentDateLocked) text += `🛑 สถานะ: วันหยุด / ไม่รับคิว\n`;
-    text += `\n🟢 โซนปกติ (${normalQueue.length} เคส)\n`;
-    normalQueue.forEach((p, i) => {
-      text += `${i+1}. ${p.name} (HN: ${p.hn}) - ${p.procedure}\n`;
-      if(p.iol1) text += `   เลนส์: ${p.iol1} ${p.iol2} ${p.iol3}\n`;
-    });
-    
-    text += `\n🟡 โซน SMC (${smcQueue.length} เคส)\n`;
-    smcQueue.forEach((p, i) => {
-      text += `${i+1}. ${p.name} (HN: ${p.hn}) - ${p.procedure}\n`;
-      if(p.iol1) text += `   เลนส์: ${p.iol1} ${p.iol2} ${p.iol3}\n`;
-    });
-
-    navigator.clipboard.writeText(text);
-    alert('ก๊อปปี้ข้อมูลสำหรับส่ง LINE เรียบร้อยแล้ว! 📋');
+    try {
+      let text = `📅 วันที่ผ่าตัด: ${formatThaiDate(currentDate)}\n`;
+      if (isCurrentDateLocked) text += `🛑 สถานะ: วันหยุด / ไม่รับคิว\n`;
+      text += `\n🟢 โซนปกติ (${normalQueue.length} เคส)\n`;
+      normalQueue.forEach((p, i) => {
+        text += `${i+1}. ${p.name} (HN: ${p.hn}) - ${p.procedure}\n`;
+        if(p.iol1) text += `   เลนส์: ${p.iol1} ${p.iol2} ${p.iol3}\n`;
+      });
+      
+      text += `\n🟡 โซน SMC (${smcQueue.length} เคส)\n`;
+      smcQueue.forEach((p, i) => {
+        text += `${i+1}. ${p.name} (HN: ${p.hn}) - ${p.procedure}\n`;
+        if(p.iol1) text += `   เลนส์: ${p.iol1} ${p.iol2} ${p.iol3}\n`;
+      });
+      
+      // การก๊อปปี้ใน Browser แบบไม่ใช้ alert
+      navigator.clipboard.writeText(text).then(() => {
+        showNotify('📋 ก๊อปปี้ข้อความสำหรับส่ง LINE เรียบร้อยฮะ!');
+      }).catch(err => {
+        // Fallback for iframe environments
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          showNotify('📋 ก๊อปปี้ข้อความสำหรับส่ง LINE เรียบร้อยฮะ!');
+        } catch (err) {
+          showNotify('❌ ก๊อปปี้ไม่ได้ฮะ ลองใหม่อีกครั้งนะ');
+        }
+        document.body.removeChild(textArea);
+      });
+    } catch (e) {
+      showNotify('❌ เกิดข้อผิดพลาดในการก๊อปปี้ฮะ');
+    }
   };
 
   const exportToImage = async () => {
-    if (!window.html2canvas) return alert('ระบบกำลังโหลดเครื่องมือถ่ายภาพ กรุณารอสักครู่ฮะ');
+    if (!window.html2canvas) {
+      showNotify('⏳ กำลังเตรียมระบบถ่ายภาพ กรุณารอสักครู่ฮะ...');
+      return;
+    }
+    showNotify('📸 กำลังถ่ายภาพหน้าจอ...');
     const captureArea = document.getElementById('day-capture-area');
     try {
       const canvas = await window.html2canvas(captureArea, { scale: 2, backgroundColor: '#fdfbf7' });
-      const image = canvas.toDataURL("image/png");
       const link = document.createElement('a');
-      link.href = image;
+      link.href = canvas.toDataURL("image/png");
       link.download = `ตารางผ่าตัด_${currentDate}.png`;
       link.click();
-    } catch (err) {
-      alert('เกิดข้อผิดพลาดในการสร้างรูปภาพ');
+      showNotify('✅ บันทึกรูปภาพเรียบร้อยฮะ!');
+    } catch (err) { 
+      showNotify('❌ ถ่ายภาพไม่สำเร็จ ลองใหม่อีกครั้งนะฮะ'); 
     }
   };
 
@@ -346,13 +399,23 @@ export default function App() {
     const currentMonthStr = currentDate.substring(0, 7);
     const monthData = patients.filter(p => p.date.startsWith(currentMonthStr));
     const rows = monthData.map(p => `${p.date},${p.zone},${p.name},${p.age},${p.hn},${p.phone},${p.procedure},${p.iol1},${p.iol2},${p.iol3},${p.iolApptDate},${p.note}`).join("\n");
-    const bom = "\uFEFF"; 
-    const blob = new Blob([bom + header + rows], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(["\uFEFF" + header + rows], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `Surgical_Plan_${currentMonthStr}.csv`;
     link.click();
+    showNotify('✅ โหลดไฟล์ Excel เรียบร้อยฮะ!');
   };
+
+  // --- Loading Screen ---
+  if (isCloudLoading) {
+    return (
+      <div className="min-h-screen paper-bg flex flex-col items-center justify-center text-blue-600 gap-4">
+         <Cloud className="animate-bounce" size={64}/>
+         <h2 className="text-2xl font-bold">กำลังเชื่อมต่อระบบคลาวด์... ☁️</h2>
+      </div>
+    );
+  }
 
   // --- Components ---
   const PatientCard = ({ patient }) => (
@@ -365,8 +428,8 @@ export default function App() {
           <p className="text-sm font-semibold opacity-90">HN: {patient.hn}</p>
         </div>
         <div className="flex gap-1">
-          <button onClick={() => openForm(patient)} className="p-1.5 bg-white/50 hover:bg-white rounded-lg"><Edit3 size={16} /></button>
-          <button onClick={() => handleCut(patient.id)} className={`p-1.5 rounded-lg ${cutPatientId === patient.id ? 'bg-red-400 text-white' : 'bg-white/50 hover:bg-white'}`}>
+          <button onClick={() => openForm(patient)} className="p-1.5 bg-white/50 hover:bg-white rounded-lg shadow-sm"><Edit3 size={16} /></button>
+          <button onClick={() => handleCut(patient.id)} className={`p-1.5 rounded-lg shadow-sm ${cutPatientId === patient.id ? 'bg-red-400 text-white' : 'bg-white/50 hover:bg-white'}`}>
             <Scissors size={16} />
           </button>
         </div>
@@ -401,11 +464,7 @@ export default function App() {
   const YearCalendarView = () => (
     <div className="p-4 md:p-6 animate-in fade-in duration-300">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mb-8">
-        
-        {/* กล่องซ้าย (Spacer ให้สมดุล) */}
         <div className="hidden sm:block sm:w-1/3"></div>
-
-        {/* ตัวเลือกปี (ตรงกลาง) */}
         <div className="flex justify-center items-center gap-6">
           <button onClick={() => setCurrentYear(y => y - 1)} className="p-2 bg-white rounded-full shadow hover:bg-gray-50 transition">
             <ChevronLeft size={24} className="text-gray-600" />
@@ -417,8 +476,6 @@ export default function App() {
             <ChevronRight size={24} className="text-gray-600" />
           </button>
         </div>
-
-        {/* ปุ่มตั้งวันหยุด (ขวา) */}
         <div className="w-full sm:w-1/3 flex justify-end">
           <button 
             onClick={() => setIsEditHolidayMode(!isEditHolidayMode)}
@@ -432,7 +489,6 @@ export default function App() {
             {isEditHolidayMode ? 'ปิดโหมดตั้งวันหยุด' : 'ตั้งวันหยุด'}
           </button>
         </div>
-
       </div>
 
       {isEditHolidayMode && (
@@ -459,9 +515,7 @@ export default function App() {
                   const isToday = dateStr === getTodayString();
                   const isLocked = lockedDays.includes(dateStr);
                   
-                  // จัดการสไตล์ของปุ่มตามโหมดที่เลือก
                   let btnStyle = "relative flex flex-col items-center justify-start pt-1 pb-4 rounded-lg transition-all h-12 border border-transparent ";
-                  
                   if (isLocked) {
                     btnStyle += "bg-gray-200 text-gray-400 border-gray-300 ";
                     if (isEditHolidayMode) btnStyle += "hover:bg-red-200 hover:text-red-700 cursor-pointer ";
@@ -478,26 +532,17 @@ export default function App() {
                   return (
                     <button 
                       key={dateStr}
-                      onClick={() => {
-                        if (isEditHolidayMode) {
-                          toggleLockDay(dateStr);
-                        } else {
-                          goToDay(dateStr);
-                        }
-                      }}
+                      onClick={() => { isEditHolidayMode ? toggleLockDay(dateStr) : goToDay(dateStr); }}
                       className={btnStyle}
                     >
                       <span className="text-sm z-10">{dayNum}</span>
                       {isLocked && <Lock size={14} className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 ${isEditHolidayMode ? 'text-red-500 opacity-60' : 'text-gray-600 opacity-20'}`} />}
-                      
-                      {/* โชว์ Badge เคส ถ้าไม่ได้อยู่ในโหมดแก้ */}
                       {hasCases && !isLocked && (
                         <div className="absolute bottom-0.5 flex gap-0.5 px-0.5 w-full justify-center">
                           {stats.normal > 0 && <span className="bg-[#4ADE80] text-green-900 text-[9px] px-1 rounded-sm shadow-sm">{stats.normal}</span>}
                           {stats.smc > 0 && <span className="bg-[#FDE047] text-yellow-900 text-[9px] px-1 rounded-sm shadow-sm">{stats.smc}</span>}
                         </div>
                       )}
-                      {/* ถ้าล็อกแล้วมีเคสค้างอยู่ ให้โชว์เป็นสีเทาเตือนไว้หน่อย */}
                       {hasCases && isLocked && (
                         <div className="absolute bottom-0.5 flex gap-0.5 px-0.5 w-full justify-center opacity-50">
                           <span className="bg-gray-400 text-white text-[9px] px-1 rounded-sm shadow-sm">{stats.normal + stats.smc}</span>
@@ -520,8 +565,7 @@ export default function App() {
     const smcCount = mData.filter(p => p.zone === 'SMC').length;
 
     const procCounts = mData.reduce((acc, p) => {
-      acc[p.procedure] = (acc[p.procedure] || 0) + 1;
-      return acc;
+      acc[p.procedure] = (acc[p.procedure] || 0) + 1; return acc;
     }, {});
 
     return (
@@ -564,11 +608,23 @@ export default function App() {
 
   return (
     <div className="min-h-screen paper-bg text-gray-800 pb-20">
+      
+      {/* --- Toast Notification Banner --- */}
+      {notification && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] bg-blue-900 text-white px-6 py-3 rounded-full font-bold shadow-xl animate-in slide-in-from-top-4 fade-in duration-300 flex items-center gap-2">
+          {notification}
+        </div>
+      )}
+
       {/* Top Navbar */}
       <nav className="bg-white/80 backdrop-blur-md border-b-2 border-gray-200 sticky top-0 z-40 px-4 py-3 flex flex-wrap justify-between items-center gap-4">
         <div className="flex items-center gap-2 cursor-pointer" onClick={() => { setView('year'); setCurrentYear(parseInt(currentDate.split('-')[0])); }}>
-          <div className="bg-blue-600 text-white p-2 rounded-xl"><CalendarDays size={24} /></div>
-          <h1 className="text-xl font-bold tracking-tight hidden sm:block">Kram Planner</h1>
+          <div className="bg-blue-600 text-white p-2 rounded-xl flex items-center justify-center shadow-sm">
+            <Cloud size={24} />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold tracking-tight hidden sm:block leading-tight">Kram Planner <span className="text-xs text-blue-500 uppercase tracking-widest ml-1 border border-blue-200 px-1 rounded">Cloud</span></h1>
+          </div>
         </div>
         
         <div className="flex items-center gap-1 bg-gray-100 p-1.5 rounded-xl border-2 border-gray-200">
@@ -592,6 +648,15 @@ export default function App() {
           </button>
         </div>
       </nav>
+
+      {/* Cloud Tool Banner */}
+      {patients.length === 0 && view === 'year' && (
+        <div className="bg-blue-50 border-b-2 border-blue-200 px-4 py-2 flex justify-center items-center">
+          <button onClick={seedMockDataToCloud} className="text-blue-700 font-bold flex items-center gap-2 hover:bg-blue-100 px-4 py-1.5 rounded-lg transition">
+            <Cloud size={18}/> 📥 โหลดข้อมูลคิวตัวอย่าง (มกราคม) เพื่อทดสอบ
+          </button>
+        </div>
+      )}
 
       {cutPatientId && (
         <div className="bg-yellow-100 border-b-2 border-yellow-300 p-3 flex justify-between items-center sticky top-[68px] z-30 shadow-sm animate-pulse">
@@ -645,7 +710,6 @@ export default function App() {
 
             <div id="day-capture-area" className="relative grid grid-cols-1 md:grid-cols-2 gap-6 p-4 -mx-4 md:mx-0 md:p-6 bg-transparent rounded-2xl">
               
-              {/* ถ้าล็อกวัน จะมีป้ายแบนเนอร์โชว์ทับ */}
               {isCurrentDateLocked && (
                 <div className="absolute inset-0 bg-red-500/10 backdrop-blur-[2px] z-10 rounded-2xl flex items-center justify-center pointer-events-none border-4 border-red-500/20">
                   <div className="bg-red-600 text-white px-8 py-3 rounded-2xl font-bold text-2xl shadow-xl flex items-center gap-3 transform -rotate-2">
